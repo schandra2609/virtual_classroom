@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+package-lock.json
+
+# Testing
+coverage/
+
+# Production
+dist/
+build/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma
+/server/prisma/dev.db
+/server/prisma/dev.db-journal
