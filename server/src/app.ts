@@ -1,4 +1,5 @@
-import express, { Application, Request, Response } from "express";
+import express from "express";
+import type { Application, Request, Response } from "express"
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -11,7 +12,7 @@ app.use(morgan('dev'));
 app.use(express.json());
 
 app.get('/', (req: Request, res: Response) => {
-	res.status(200).data({
+	res.status(200).send({
 		success: true,
 		message: "Virtual Classroom API is running",
 	});
