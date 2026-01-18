@@ -7,3 +7,241 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+
+
+
+enum AccountType {
+  STUDENT
+  TUTOR
+  ADMINISTRATOR
+}
+
+enum ClassroomRole {
+  CREATOR
+  CO_TUTOR
+  STUDENT
+}
+
+enum MembershipStatus {
+  PENDING
+  APPROVED
+}
+
+enum ClassroomInvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
+enum QuestionType {
+  MCQ
+  MSQ
+  NAT
+}
+
+enum TestAttemptType {
+  OFFICIAL
+  PRACTICE
+}
+
+enum TutorVerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+
+
+
+
+model User {
+  id            String      @id @default(cuid())
+  email         String      @unique
+  password      String
+  fullName      String
+  accountType   AccountType
+  refreshToken  String?
+
+  profilePhotoUrl           String?
+  isEmailVerified           Boolean     @default(false)
+  emailVerificationExpiry   DateTime?
+  verificationOtp           String?
+  verificationOtpExpiry     DateTime?
+
+  tutorVerificationStatus   TutorVerificationStatus     @default(UNVERIFIED)
+  tutorStatusUpdatedAt      DateTime?
+  tutorQualificationUrl     String?
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  classrooms              ClassroomMember[]
+  createdQuestionPapers   QuestionPaper[]
+  announcements           Announcement[]
+  comments                Comment[]
+  testAttempts            TestAttempt[]
+  approvedMemberships     ClassroomMember[]       @relation("ApprovedByTutor")
+  classroomInvitations    ClassroomInvitation[]
+}
+
+model Classroom {
+  id          String   @id @default(cuid())
+  name        String
+  subject     String
+  batch       String
+  joiningCode String   @unique @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members         ClassroomMember[]
+  announcements   Announcement[]
+  questionPapers  QuestionPaper[]
+  invitations     ClassroomInvitation[]
+}
+
+model ClassroomMember {
+  role             ClassroomRole
+  membershipStatus MembershipStatus @default(PENDING)
+  feePaidUntil     DateTime?
+  joinedAt         DateTime       @default(now())
+  approvedById     String?
+
+  userId      String
+  classroomId String
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classroom    Classroom     @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  approvedBy   User?         @relation("ApprovedByTutor", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@id([userId, classroomId])
+}
+
+model ClassroomInvitation {
+  id            String                      @id @default(cuid())
+  expiresAt     DateTime
+  status        ClassroomInvitationStatus   @default(PENDING)
+
+  classroomId   String
+  inviterId     String
+  inviteeEmail  String
+
+  classroom     Classroom   @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  inviter       User        @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime    @default(now())
+}
+
+
+
+
+
+model QuestionPaper {
+  id        String   @id @default(cuid())
+  title     String
+  liveAt    DateTime
+  duration  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creatorId   String
+  classroomId String
+  creator       User          @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  classroom     Classroom     @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  
+  questions     Question[]
+  attempts      TestAttempt[]
+}
+
+model Question {
+  id                      String        @id @default(cuid())
+  text                    String        @db.Text
+  type                    QuestionType
+  marks                   Float
+  numericalCorrectAnswer  Float?
+  qpaperId                String
+
+  qpaper    QuestionPaper  @relation(fields: [qpaperId], references: [id], onDelete: Cascade)
+  options   Option[]
+  answers   Answer[]
+}
+
+model Option {
+  id         String  @id @default(cuid())
+  text       String
+  isCorrect  Boolean @default(false)
+  questionId String
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+model TestAttempt {
+  id              String          @id @default(cuid())
+  type            TestAttemptType
+  score           Float?
+  submittedAt     DateTime?
+  createdAt       DateTime        @default(now())
+
+  studentId       String
+  questionPaperId String
+
+  student       User          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  questionPaper QuestionPaper @relation(fields: [questionPaperId], references: [id], onDelete: Cascade)
+  answers       Answer[]
+}
+
+model Answer {
+  id               String  @id @default(cuid())
+  selectedOptionId String?
+  numericalAnswer  Float?
+
+  testAttemptId String
+  questionId    String
+
+  testAttempt TestAttempt @relation(fields: [testAttemptId], references: [id], onDelete: Cascade)
+  question    Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+
+
+
+
+model Announcement {
+  id          String   @id @default(cuid())
+  message     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  authorId    String
+  classroomId String
+
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  classroom   Classroom    @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
+  comments    Comment[]
+}
+
+model Attachment {
+  id             String       @id @default(cuid())
+  url            String
+  fileName       String
+  fileType       String
+  createdAt      DateTime     @default(now())
+  announcementId String
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id             String       @id @default(cuid())
+  text           String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  authorId       String
+  announcementId String
+
+  author       User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+}
