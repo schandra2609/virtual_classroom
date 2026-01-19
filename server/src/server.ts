@@ -1,10 +1,6 @@
 import app from "./app.ts";
-import { config } from "dotenv";
-import path from "path";
+import { ENV_CONFIG } from "./configs/env.config.ts";
 
-const envFile = `.env.${process.env.NODE_ENV || "development"}`;
-config({ path: path.resolve(process.cwd(), envFile) });
-
-app.listen(process.env.PORT || 5500, () => {
-	console.log(`Server running in ${process.env.NODE_ENV} mode on port ${process.env.PORT}`);
+app.listen(ENV_CONFIG.PORT, () => {
+	console.log(`🚀 Server running in ${ENV_CONFIG.NODE_ENV} mode on port ${ENV_CONFIG.PORT}`);
 });
