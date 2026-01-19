@@ -8,12 +8,19 @@
     "test": "NODE_ENV=test node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand --passWithNoTests",
     "test:coverage": "npm test -- --coverage",
     "dev": "NODE_ENV=development nodemon src/server.ts",
+    "start": "NODE_ENV=production node dist/server.js",
     "build": "tsc",
-    "start": "NODE_ENV=production node dist/server.js"
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate:dev": "NODE_ENV=development npx prisma migrate dev",
+    "prisma:migrate:prod": "npx prisma migrate deploy --env-file .env.production",
+    "prisma:push:test": "NODE_ENV=test npx prisma db push --env-file .env.test",
+    "prisma:studio": "npx prisma studio",
+    "prisma:seed": "ts-node --esm prisma/seed.ts --env-file .env.development"
   },
   "author": "Sayan Chandra",
   "license": "ISC",
   "dependencies": {
+    "@prisma/client": "^6.19.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
