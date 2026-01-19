@@ -11,7 +11,7 @@ app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
 
-app.get('/', (req: Request, res: Response) => {
+app.get('/health', (req: Request, res: Response) => {
 	res.status(200).send({
 		success: true,
 		message: "Virtual Classroom API is running",
