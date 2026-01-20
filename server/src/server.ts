@@ -5,6 +5,7 @@ import { ENV_CONFIG } from "./configs/env.config.ts";
 import { prisma } from "./configs/database.config.ts";
 import { dayjs } from "./configs/dayjs.config.ts";
 import { initializeStorage } from "./configs/minio.config.ts";
+import { verifyTransporter } from "./configs/mailer.config.ts";
 
 
 const seedAdmin = async () : Promise<void> => {
@@ -41,8 +42,13 @@ const startServer = async () : Promise<void> => {
 	try {
 		await prisma.$connect();
 		console.log(chalk.greenBright.italic("Database connected successfully"));
-		await seedAdmin();
+		
 		await initializeStorage();
+
+		await verifyTransporter();
+
+		await seedAdmin();
+		
 		app.listen(ENV_CONFIG.PORT, () => {
             console.log(
 				chalk.greenBright.italic(">>> ") +
