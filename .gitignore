@@ -31,6 +31,8 @@ Thumbs.db
 # Prisma
 /server/prisma/dev.db
 /server/prisma/dev.db-journal
+/server/generated/
+
 
 # Logs
 npm-debug.log*
