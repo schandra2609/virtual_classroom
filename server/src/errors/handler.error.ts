@@ -6,8 +6,8 @@ export class BadRequestError extends HttpError {
     }
 }
 
-export class UnauthenticatedError extends HttpError {
-    constructor(message: string = "Unauthenticated") {
+export class Unauthorized extends HttpError {
+    constructor(message: string = "Unauthorized") {
         super(message, 401);
     }
 }
