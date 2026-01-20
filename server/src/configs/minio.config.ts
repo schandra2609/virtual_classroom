@@ -1,4 +1,5 @@
 import * as Minio from "minio";
+import Logger from "../utils/Logger.ts";
 import { ENV_CONFIG } from "./env.config.ts";
 
 export const minioClient = new Minio.Client({
@@ -15,12 +16,13 @@ export const initializeStorage = async () : Promise<void> => {
     try {
         const existingBucket = await minioClient.bucketExists(BucketName);
         if(existingBucket) {
-            console.log(`MinIO: Bucket "${BucketName}" is ready.`);
+            Logger.log(`MinIO: Bucket "${BucketName}" is ready.`);
         } else {
             await minioClient.makeBucket(BucketName, 'us-east-1');
-            console.log(`MinIO: Bucket "${BucketName}" created successfully.`);
+            Logger.log(`MinIO: Bucket "${BucketName}" created successfully.`);
         }
     } catch (error) {
-        console.error('MinIO: Failed to initialize storage:', error);
+        Logger.error('MinIO: Failed to initialize storage.');
+        Logger.debug(error instanceof Error ? error.message : String(error));
     }
-}
+};

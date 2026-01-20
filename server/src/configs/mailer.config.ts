@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { ENV_CONFIG } from './env.config.js';
+import Logger from '../utils/Logger.ts';
 
 export const transporter: Transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -13,9 +14,9 @@ export const transporter: Transporter = nodemailer.createTransport({
 export const verifyTransporter = async (): Promise<void> => {
     try {
         await transporter.verify();
-        console.log('Mail transporter is ready to send emails');
+        Logger.log('Mail transporter is ready to send emails');
     } catch (error) {
-        console.error('Mail connection failed:');
-        console.error(error instanceof Error ? error.message : error);
+        Logger.error('Mail connection failed:');
+        Logger.debug(error instanceof Error ? error.message : String(error));
     }
 };

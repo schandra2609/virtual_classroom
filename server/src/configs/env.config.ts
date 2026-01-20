@@ -1,5 +1,6 @@
 import { config } from "dotenv";
 import path from "path";
+import Logger from "../utils/Logger.ts";
 
 config({ path: path.resolve(process.cwd(), `.env.${process.env.NODE_ENV || "development"}`) });
 
@@ -19,7 +20,7 @@ const {
 } = process.env;
 
 const CORS_ORIGIN = (process.env.CORS_ORIGIN || "").split(',').map(origin => origin.trim()).filter(origin => origin !== "");
-console.log(`🚀 Environment: ${NODE_ENV} | Port: ${PORT} | API: ${API_V}`);
+Logger.log(`Environment: ${NODE_ENV} | Port: ${PORT} | API: ${API_V}`);
 
 export const ENV_CONFIG = {
     NODE_ENV: NODE_ENV || "development",
