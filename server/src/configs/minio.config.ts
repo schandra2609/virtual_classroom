@@ -15,10 +15,10 @@ export const initializeStorage = async () : Promise<void> => {
     try {
         const existingBucket = await minioClient.bucketExists(BucketName);
         if(existingBucket) {
-            console.log(`🪣  MinIO: Bucket "${BucketName}" is ready.`);
+            console.log(`MinIO: Bucket "${BucketName}" is ready.`);
         } else {
             await minioClient.makeBucket(BucketName, 'us-east-1');
-            console.log(`🪣  MinIO: Bucket "${BucketName}" created successfully.`);
+            console.log(`MinIO: Bucket "${BucketName}" created successfully.`);
         }
     } catch (error) {
         console.error('MinIO: Failed to initialize storage:', error);
