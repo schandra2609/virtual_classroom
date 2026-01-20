@@ -6,6 +6,8 @@ import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import passport from "passport";
 import { configureGoogleStrategy } from "./configs/passport.config.ts";
+import { globalErrorHandler } from "./middlewares/error.middleware.ts";
+
 
 const app: Application = express();
 
@@ -21,10 +23,12 @@ app.use(passport.initialize());
 configureGoogleStrategy(passport);
 
 app.get('/health', (req: Request, res: Response) => {
-	res.status(200).send({
-		success: true,
-		message: "Virtual Classroom API is running",
-	});
+    res.status(200).json({
+        success: true,
+        message: "Virtual Classroom API is running"
+    });
 });
+
+app.use(globalErrorHandler);
 
 export default app;
