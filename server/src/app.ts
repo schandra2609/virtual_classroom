@@ -1,5 +1,5 @@
 import express from "express";
-import type { Application, Request, Response } from "express";
+import type { Application } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -8,6 +8,8 @@ import passport from "passport";
 import { configureGoogleStrategy } from "./configs/passport.config.ts";
 import { globalErrorHandler } from "./middlewares/error.middleware.ts";
 
+import rootRouter from "./routes/root.routes.ts";
+import { ENV_CONFIG } from "./configs/env.config.ts";
 
 const app: Application = express();
 
@@ -22,12 +24,8 @@ app.use(cookieParser());
 app.use(passport.initialize());
 configureGoogleStrategy(passport);
 
-app.get('/health', (req: Request, res: Response) => {
-    res.status(200).json({
-        success: true,
-        message: "Virtual Classroom API is running"
-    });
-});
+app.use(`${ENV_CONFIG.API_V}`, rootRouter);
+
 
 app.use(globalErrorHandler);
 
