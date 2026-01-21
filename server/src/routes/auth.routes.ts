@@ -3,7 +3,7 @@ import { completeUserProfile, handleGoogleCallback, login, logout, refreshAccess
 import { verifyToken } from "../middlewares/auth.middleware.ts";
 import passport from "passport";
 
-const router = Router();
+const router: Router = Router();
 
 router.route("/register")
     .post(register);

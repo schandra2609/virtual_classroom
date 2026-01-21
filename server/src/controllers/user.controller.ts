@@ -96,7 +96,7 @@ export const sendVerificationOtp = async (req: AuthenticatedRequest, res: Respon
             },
         });
 
-        // send OTP via email service (to be implemented)
+        // TODO: send OTP via email service (to be implemented)
 
         res.status(200).json({
             success: true,

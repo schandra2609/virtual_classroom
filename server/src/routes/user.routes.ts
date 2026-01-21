@@ -2,7 +2,8 @@ import { Router } from "express";
 import { authorize, verifyToken } from "../middlewares/auth.middleware.ts";
 import { changePassword, getCurrentUser, sendVerificationOtp, submitQualification, updateCurrentUser, verifyEmail } from "../controllers/user.controller.ts";
 
-const router = Router();
+const router: Router = Router();
+
 router.use(verifyToken as any);
 
 router.route("/")

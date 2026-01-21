@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import authRouter from "./auth.routes.ts";
 import userRouter from "./user.routes.ts";
 
-const router = Router();
+const router: Router = Router();
 
 router.use("/auth", authRouter);
 router.use("/users/me", userRouter);
