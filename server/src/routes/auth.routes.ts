@@ -19,7 +19,7 @@ router.route("/refresh-token")
 
 router.route("/google")
     .get(passport.authenticate("google", {
-        scope: ['profile', 'email'],
+        scope: ["profile", "email"],
         session: false
     }));
 
