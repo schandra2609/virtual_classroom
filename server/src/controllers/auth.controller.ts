@@ -16,13 +16,13 @@ const generateTokens = async (user: Partial<User>) => {
         throw new BadRequestError("User ID is required to generate tokens");
     }
 
-    const accessToken = jwt.sign(
+    const accessToken: string = jwt.sign(
         { id: user.id, email: user.email, accountType: user.accountType },
         ENV_CONFIG.ACCESS_TOKEN.SECRET as string,
         { expiresIn: ENV_CONFIG.ACCESS_TOKEN.LIFETIME as any },
     );
 
-    const refreshToken = jwt.sign(
+    const refreshToken: string = jwt.sign(
         { id: user.id, email: user.email, accountType: user.accountType },
         ENV_CONFIG.REFRESH_TOKEN.SECRET as string,
         { expiresIn: ENV_CONFIG.REFRESH_TOKEN.LIFETIME as any },
@@ -36,10 +36,9 @@ const generateTokens = async (user: Partial<User>) => {
     return { accessToken, refreshToken };
 }
 
-
 export const register = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { fullName, email, password, accountType } = req.body;
+        const { fullName, email, password, accountType } = req.body as { fullName: string, email: string, password: string, accountType: any };
         if(![fullName, email, password, accountType].every(field => field.trim())) {
             throw new BadRequestError("Full name, email, password and account type are required");
         }
@@ -55,7 +54,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
             throw new BadRequestError("Password is not strong enough");
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword: string = await bcrypt.hash(password, 10);
         const newUser = await prisma.user.create({
             data: {
                 fullName: fullName.trim(),
@@ -84,25 +83,25 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
 
 export const login = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { email, password } = req.body;
+        const { email, password } = req.body as { email: string, password: string };
         if(![email, password].every(field => field.trim())) {
             throw new BadRequestError("Email and password are required");
         }
 
         const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
         if(!user) {
-            throw new NotFoundError("Invalid email or password");
+            throw new NotFoundError("User not found for this email");
         }
 
         const isPasswordCorrect = await bcrypt.compare(password, user.password as string);
         if(!isPasswordCorrect) {
-            throw new UnauthorizedError("Invalid email or password");
+            throw new UnauthorizedError("Invalid credentials.");
         }
 
-        const { accessToken, refreshToken } = await generateTokens(user);
+        const { accessToken, refreshToken } = await generateTokens(user) as { accessToken: string, refreshToken: string };
         const cookieOptions = {
-            httpOnly: true,
-            secure: ENV_CONFIG.NODE_ENV === "production",
+            httpOnly: true as boolean,
+            secure: (ENV_CONFIG.NODE_ENV === "production") as boolean,
             sameSite: "strict" as const,
         }
 
@@ -124,12 +123,8 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
 export const logout = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-        if(!req.user?.id) {
-            throw new BadRequestError("Not authenticated");
-        }
-
         await prisma.user.update({
-            where: { id: req.user.id },
+            where: { id: req.user?.id as string},
             data: { refreshToken: null },
         });
 
@@ -146,15 +141,15 @@ export const logout = async (req: AuthenticatedRequest, res: Response, next: Nex
 
 export const handleGoogleCallback = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-        const googleProfile = req.user as any; 
-        const email = googleProfile.emails[0].value;
+        const googleProfile = req.user as any;
+        const email = googleProfile.emails[0].value as string;
 
-        const existingUser = await prisma.user.findUnique({ where: { email: email } });
+        const existingUser = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
         if(existingUser) {
             const { accessToken, refreshToken } = await generateTokens(existingUser);
             const cookieOptions = {
                 httpOnly: true,
-                secure: ENV_CONFIG.NODE_ENV === "production",
+                secure: (ENV_CONFIG.NODE_ENV === "production") as boolean,
                 sameSite: "strict" as const,
             }
 
@@ -171,21 +166,21 @@ export const handleGoogleCallback = async (req: AuthenticatedRequest, res: Respo
 
 export const refreshAccessTokens = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const incomingRefreshToken = req.cookies?.refreshToken;
-        if (!incomingRefreshToken?.trim()) {
-            throw new UnauthorizedError("No refresh token provided");
+        const incomingRefreshToken: string = req.cookies?.refreshToken;
+        if (!incomingRefreshToken.trim()) {
+            throw new UnauthorizedError("No refresh token provided.");
         }
 
         const decoded = jwt.verify(incomingRefreshToken, ENV_CONFIG.REFRESH_TOKEN.SECRET) as JwtPayload;
         const user = await prisma.user.findUnique({ where: { id: decoded.id } });
         if (!user || user.refreshToken !== incomingRefreshToken) {
-            throw new UnauthorizedError("Invalid or expired refresh token");
+            throw new UnauthorizedError("Invalid or expired refresh token.");
         }
 
-        const { accessToken, refreshToken } = await generateTokens(user);
+        const { accessToken, refreshToken } = await generateTokens(user) as { accessToken: string, refreshToken: string };
         const cookieOptions = {
             httpOnly: true,
-            secure: ENV_CONFIG.NODE_ENV === "production",
+            secure: (ENV_CONFIG.NODE_ENV === "production") as boolean,
             sameSite: "strict" as const,
         };
 
@@ -203,16 +198,16 @@ export const refreshAccessTokens = async (req: Request, res: Response, next: Nex
 
 export const completeUserProfile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { setupToken, accountType, qualificationUrl } = req.body;
-        if (!(setupToken?.trim() && accountType?.trim())) {
-            throw new BadRequestError("Missing values: setup token, account type");
+        const { setupToken, accountType, qualificationUrl } = req.body as { setupToken: string, accountType: any, qualificationUrl: string };
+        if(![setupToken, accountType, qualificationUrl].every((field) => field.trim())) {
+            throw new BadRequestError("Setup token, account type, qualification URL are required.");
         }
 
         const decoded = jwt.verify(setupToken, ENV_CONFIG.REFRESH_TOKEN.SECRET) as JwtPayload;
         const user = await prisma.user.create({
             data: {
-                email: decoded.email,
-                fullName: decoded.fullName,
+                email: decoded.email as string,
+                fullName: decoded.fullName as string,
                 password: await bcrypt.hash(randomBytes(20).toString('hex'), 10),
                 accountType: accountType,
                 isEmailVerified: true,
@@ -220,10 +215,10 @@ export const completeUserProfile = async (req: Request, res: Response, next: Nex
                 tutorQualificationUrl: accountType === "TUTOR" ? qualificationUrl : null,
             }
         });
-        const { accessToken, refreshToken } = await generateTokens(user);
+        const { accessToken, refreshToken } = await generateTokens(user) as { accessToken: string, refreshToken: string };
         const cookieOptions = {
             httpOnly: true,
-            secure: ENV_CONFIG.NODE_ENV === "production",
+            secure: (ENV_CONFIG.NODE_ENV === "production") as boolean,
             sameSite: "strict" as const,
         };
         const { password: _, refreshToken: __, ...userWithoutSecrets } = user;
