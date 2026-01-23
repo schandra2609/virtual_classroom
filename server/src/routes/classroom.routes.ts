@@ -1,7 +1,9 @@
 import { Router } from "express";
+import announcementRouter from "./announcement.routes.ts";
 import memberRouter from "./member.routes.ts";
 import {
     authorize,
+    isClassroomTutor,
     isCreator,
     isMember,
     verifyToken,
@@ -21,8 +23,6 @@ import {
 
 
 const router: Router = Router();
-
-router.use(verifyToken as any);
 
 router.route("/")
     .get(getMyClassrooms as any)
@@ -48,6 +48,7 @@ router.route("/:classroomId/refresh-code")
 router.route("/:classroomId/transfer-ownership")
     .patch(isCreator as any, transferOwnership as any);
 
-router.use("/members", memberRouter);
+router.use("/announcements", isMember as any, announcementRouter);
+router.use("/members", isClassroomTutor as any, memberRouter);
 
 export default router;
