@@ -13,6 +13,10 @@ import { ENV_CONFIG } from "./configs/env.config.ts";
 
 const app: Application = express();
 
+if(ENV_CONFIG.NODE_ENV === "production") {
+    app.set('trust proxy', 1);
+}
+
 app.use(helmet());
 app.use(cors());
 app.use(morgan('dev'));
