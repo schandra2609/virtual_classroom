@@ -21,8 +21,8 @@ export const getCurrentUser = (req: AuthenticatedRequest, res: Response, next: N
 
 export const updateCurrentUser = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-        const { fullName, profilePhotoUrl } = req.body;
-        if(!fullName?.trim() && !profilePhotoUrl?.trim()) {
+        const { fullName, profilePhotoUrl, email } = req.body as Partial<{ fullName: string, profilePhotoUrl: string, email: string }>;
+        if(![fullName, profilePhotoUrl, email].some((field) => field?.trim())) {
             throw new BadRequestError("Nothing to update");
         }
 

@@ -4,8 +4,7 @@ import { prisma } from "../configs/database.config.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../errors/handler.error.ts";
 import Helper from "../utils/Helper.ts";
-import { ENV_CONFIG } from "../configs/env.config.ts";
-import type { ClassroomMember, User } from "../../generated/prisma/client.ts";
+import type { User } from "../../generated/prisma/client.ts";
 
 export const getMyClassrooms = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -28,12 +27,12 @@ export const getMyClassrooms = async (req: AuthenticatedRequest, res: Response, 
 export const createClassroom = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { name, subject, batch } = req.body as { name: string, subject: string, batch: string };
+        if(![name, subject, batch].every((field) => field.trim())) {
+            throw new BadRequestError("Name, subject, batch are required to initialize a classroom.");
+        }
         const creator = req.user as User;
         if(creator.tutorVerificationStatus !== "VERIFIED") {
             throw new ForbiddenError("This action is restricted to VERIFIED TUTORs only.")
-        }
-        if(!name.trim() || !subject.trim() || !batch.trim()) {
-            throw new BadRequestError("Name, subject, batch are required to initialize a classroom.");
         }
 
         let joiningCode: string;
@@ -77,7 +76,7 @@ export const joinClassroom = async (req: AuthenticatedRequest, res: Response, ne
     try {
         const studentId = req.user?.id as string;
         const { joiningCode } = req.body as { joiningCode: string };
-        if(!studentId.trim() || !joiningCode.trim()) {
+        if(![studentId, joiningCode].every((field) => field.trim())) {
             throw new BadRequestError("Student ID, joining code are required to join a classroom.");
         }
 
@@ -115,7 +114,7 @@ export const getClassroomById = async (req: AuthenticatedRequest, res: Response,
         const { classroomId } = req.params as { classroomId: string };
         const userId = req.user?.id as string;
         const userRole = req.membership?.role as string;
-        if(!classroomId.trim() || !userId.trim() || !userRole.trim()) {
+        if(![classroomId, userId, userRole].every((field) => field.trim())) {
             throw new BadRequestError("Classroom ID, user ID, user role are required.");
         }
         const classroom = await prisma.classroom.findUnique({
@@ -152,19 +151,24 @@ export const getClassroomById = async (req: AuthenticatedRequest, res: Response,
 export const updateClassroom = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { classroomId } = req.params as { classroomId: string };
-        const membership = req.membership as ClassroomMember;
-        const { name, subject, batch } = req.body as { name: string, subject: string, batch: string };
-        if(!name.trim() || !subject.trim() || !batch.trim() || !classroomId.trim() || !membership) {
-            throw new BadRequestError("Full name, subject name, batch, classroom id, membership are required.");
+        if(!classroomId.trim()) {
+            throw new BadRequestError("Classroom ID is required.");
         }
-        if (membership.role !== 'CREATOR') {
-            throw new ForbiddenError("Only the classroom creator can edit its details.");
+        const { name, subject, batch } = req.body as Partial<{ name: string, subject: string, batch: string }>;
+        if(![name, subject, batch].some((field) => field?.trim())) {
+            throw new BadRequestError("Nothing to update.");
         }
+
+        const updateData: Partial<{ name: string, subject: string, batch: string }> = {};
+        if(name?.trim()) updateData.name = name?.trim();
+        if(subject?.trim()) updateData.subject = subject?.trim();
+        if(batch?.trim()) updateData.batch = batch?.trim();
 
         const updatedClassroom = await prisma.classroom.update({
             where: { id: classroomId as string },
-            data: { name: name, subject: subject, batch: batch },
+            data: updateData,
         });
+        
         res.status(200).json({
             success: true,
             data: updatedClassroom,
@@ -178,12 +182,8 @@ export const updateClassroom = async (req: AuthenticatedRequest, res: Response, 
 export const deleteClassroom = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { classroomId } = req.params as { classroomId: string };
-        const membership = req.membership as ClassroomMember;
-        if(!classroomId) {
+        if(!classroomId.trim()) {
             throw new BadRequestError("Classroom ID is required.");
-        }
-        if(membership?.role !== "CREATOR") {
-            throw new ForbiddenError("Only the classroom creator can delete the classroom.");
         }
 
         await prisma.classroom.delete({ where: { id: classroomId as string } });
@@ -223,14 +223,14 @@ export const inviteCoTutor = async (req: AuthenticatedRequest, res: Response, ne
         if(inviter?.tutorVerificationStatus !== "VERIFIED") {
             throw new ForbiddenError("Not a verified tutor account");
         }
-        if(!inviteeEmail?.trim() || !inviteeName?.trim() || !classroomId?.trim()) {
+        if(![inviteeEmail, inviteeName, classroomId].every((field) => field.trim())) {
             throw new BadRequestError("Classroom ID, invitee name, invitee email are required");
         }
 
         const expiresAt = dayjs().add(168, 'hour').toDate();
         const classroom = await prisma.classroom.findUnique({ where: { id: classroomId } });
         if(!classroom) {
-            throw new NotFoundError("Classroom not found");
+            throw new NotFoundError("Classroom not found.");
         }
 
         await prisma.classroomInvitation.create({
@@ -256,20 +256,24 @@ export const inviteCoTutor = async (req: AuthenticatedRequest, res: Response, ne
 export const refreshJoiningCode = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { classroomId } = req.params as { classroomId: string };
+        if(!classroomId?.trim()) {
+            throw new BadRequestError("Classroom ID id required.");
+        }
+
         let newJoiningCode, isUnique = false;
         while(!isUnique) {
             newJoiningCode = Helper.generateRandomCode(8);
             const existingClassroom = await prisma.classroom.findUnique({
                 where: { joiningCode: newJoiningCode }
             });
-            if(!existingClassroom) {
-                isUnique = true;
-            }
+            if(!existingClassroom) isUnique = true;
         }
+
         const updatedClassroom = await prisma.classroom.update({
             where: { id: classroomId },
             data: { joiningCode: newJoiningCode as string },
         });
+
         res.status(200).json({
             success: true,
             data: { newJoiningCode: updatedClassroom.joiningCode },
@@ -285,7 +289,7 @@ export const transferOwnership = async (req: AuthenticatedRequest, res: Response
         const userId = req.user?.id as string;
         const { newOwnerId } = req.body as { newOwnerId: string };
         const { classroomId } = req.params as { classroomId: string };
-        if(!userId?.trim() || newOwnerId?.trim() || classroomId?.trim()) {
+        if(![userId, newOwnerId, classroomId].every((field) => field.trim())) {
             throw new BadRequestError("User ID, new owner ID, classroom ID are required.");
         }
 
@@ -313,4 +317,4 @@ export const transferOwnership = async (req: AuthenticatedRequest, res: Response
     } catch (error) {
         next(error);
     }
-}
+};

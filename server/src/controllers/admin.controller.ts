@@ -5,14 +5,14 @@ import { prisma } from "../configs/database.config.ts";
 
 export const getTutorApplications = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-        const { status } = req.query;
-        if (!status) {
+        const { status } = req.query as { status: string };
+        if (!status.trim()) {
             throw new BadRequestError("A 'status' query parameter is required.");
         }
 
-        const normalizedStatus = (status as string).toUpperCase();
+        const normalizedStatus = status.toUpperCase();
         if (!["PENDING", "VERIFIED", "REJECTED"].includes(normalizedStatus)) {
-            throw new BadRequestError("Invalid status. Must be PENDING, VERIFIED, or REJECTED.");
+            throw new BadRequestError("Invalid status. Must be PENDING, VERIFIED or REJECTED.");
         }
 
         const tutors = await prisma.user.findMany({
@@ -42,8 +42,8 @@ export const getTutorApplications = async (req: AuthenticatedRequest, res: Respo
 
 export const approveTutor = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-        const { tutorId } = req.params;
-        if(!tutorId) {
+        const { tutorId } = req.params as { tutorId: string };
+        if(!tutorId.trim()) {
             throw new BadRequestError("Tutor ID is required.");
         }
 
@@ -78,8 +78,8 @@ export const approveTutor = async (req: AuthenticatedRequest, res: Response, nex
 
 export const rejectTutor = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-        const { tutorId } = req.params;
-        if(!tutorId) {
+        const { tutorId } = req.params as { tutorId: string };
+        if(!tutorId.trim()) {
             throw new BadRequestError("Tutor ID is required.");
         }
 
@@ -98,6 +98,12 @@ export const rejectTutor = async (req: AuthenticatedRequest, res: Response, next
                 tutorStatusUpdatedAt: new Date(),
             },
             select: { id: true, fullName: true, email: true, tutorVerificationStatus: true },
+        });
+
+        res.status(200).json({
+            success: true,
+            data: rejectedTutor,
+            message: "Tutor has been rejected",
         });
     } catch (error) {
         next(error);
