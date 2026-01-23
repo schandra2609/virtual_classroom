@@ -1,4 +1,5 @@
 import { Router } from "express";
+import memberRouter from "./member.routes.ts";
 import {
     authorize,
     isCreator,
@@ -46,5 +47,7 @@ router.route("/:classroomId/refresh-code")
 
 router.route("/:classroomId/transfer-ownership")
     .patch(isCreator as any, transferOwnership as any);
+
+router.use("/members", memberRouter);
 
 export default router;
