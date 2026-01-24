@@ -191,7 +191,7 @@ model TestAttempt {
   questionPaper QuestionPaper @relation(fields: [questionPaperId], references: [id], onDelete: Cascade)
   answers       Answer[]
 
-  @@id([testAttemptId, questionId])
+  @@unique([id, questionPaperId])
 }
 
 model Answer {
