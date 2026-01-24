@@ -4,8 +4,6 @@ import { approveStudent, getClassroomMembers, removeMember, updateStudentPayment
 
 const router: Router = Router({ mergeParams: true });
 
-router.use(isClassroomTutor as any);
-
 router.route("/")
     .get(getClassroomMembers as any);
 

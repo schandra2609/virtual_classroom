@@ -1,12 +1,12 @@
 import { Router } from "express";
 import announcementRouter from "./announcement.routes.ts";
 import memberRouter from "./member.routes.ts";
+import qPaperRouter from "./qpaper.routes.ts";
 import {
     authorize,
     isClassroomTutor,
     isCreator,
     isMember,
-    verifyToken,
 } from "../middlewares/auth.middleware.ts";
 import {
     createClassroom,
@@ -20,7 +20,6 @@ import {
     transferOwnership,
     updateClassroom,
 } from "../controllers/classroom.controller.ts";
-
 
 const router: Router = Router();
 
@@ -50,5 +49,6 @@ router.route("/:classroomId/transfer-ownership")
 
 router.use("/:classroomId/announcements", isMember as any, announcementRouter);
 router.use("/:classroomId/members", isClassroomTutor as any, memberRouter);
+router.use("/:classroomId/papers", isMember as any, qPaperRouter);
 
 export default router;

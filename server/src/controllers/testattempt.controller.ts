@@ -1,0 +1,253 @@
+import type { NextFunction, Response } from "express";
+import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../errors/handler.error.ts";
+import { prisma } from "../configs/database.config.ts";
+import { dayjs } from "../configs/dayjs.config.ts";
+
+export const startTestAttempt = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+        const { paperId } = req.params as { paperId: string };
+        const studentId = req.user?.id as string;
+        if(paperId.trim()) {
+            throw new BadRequestError("Paper ID is required.");
+        }
+
+        const questionPaper = await prisma.questionPaper.findUnique({ where: { id: paperId } });
+        if(!questionPaper) {
+            throw new NotFoundError("Question paper not found.");
+        }
+
+        const now = dayjs();
+        const startTime = dayjs(questionPaper.liveAt);
+        const endTime = startTime.add(questionPaper.duration, 'minute');
+        const isLive = now.isAfter(startTime) && now.isBefore(endTime);
+        const attemptType = isLive ? "OFFICIAL" : "PRACTICE";
+
+        if(attemptType === "OFFICIAL") {
+            const existingOfficialAttempt = await prisma.testAttempt.findFirst({
+                where: { studentId: studentId, questionPaperId: paperId, type: "OFFICIAL" },
+            });
+            if(existingOfficialAttempt) {
+                throw new ConflictError("You have already completed your OFFICIAL attempt for this test.");
+            }
+        }
+
+        const newAttempt = await prisma.testAttempt.create({
+            data: {
+                type: attemptType,
+                studentId: studentId,
+                questionPaperId: paperId,
+            },
+            include: { questionPaper: true },
+        });
+        res.status(201).json({
+            success: true,
+            data: newAttempt,
+            message: `Started a new ${attemptType} test attempt`,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const submitAnswer = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+        const { attemptId } = req.params as { attemptId: string };
+        const studentId = req.user?.id as string;
+        const { questionId, selectedOptionId, numericalAnswer } = req.body as { questionId: string, selectedOptionId?: string | string[], numericalAnswer?: number };
+        if(![attemptId, questionId].every((field) => field.trim())) {
+            throw new BadRequestError("Attempt ID, question ID are required fields.");
+        }
+
+        const attempt = await prisma.testAttempt.findUnique({ where: { id: attemptId } });
+        if (!attempt || attempt.studentId !== studentId) {
+            throw new NotFoundError("Attempt not found or access denied.");
+        }
+        if (attempt.submittedAt) {
+            throw new BadRequestError("This test has already been submitted.");
+        }
+
+        let normalizedOptionId: string | null = null;
+        if(Array.isArray(selectedOptionId)) {
+            normalizedOptionId = selectedOptionId.join(",");
+        } else if (typeof selectedOptionId === "string") {
+            normalizedOptionId = selectedOptionId;
+        }
+
+        if (normalizedOptionId === null && (numericalAnswer === undefined || numericalAnswer === null)) {
+            throw new BadRequestError("No valid answer provided (selection or numerical).");
+        }
+
+        const savedAnswer = await prisma.answer.upsert({
+            where: {
+                testAttemptId_questionId: {
+                    testAttemptId: attemptId,
+                    questionId: questionId,
+                },
+            },
+            update: {
+                selectedOptionId: normalizedOptionId,
+                numericalAnswer: numericalAnswer ?? null,
+            },
+            create: {
+                testAttemptId: attemptId,
+                questionId: questionId,
+                selectedOptionId: normalizedOptionId,
+                numericalAnswer: numericalAnswer ?? null,
+            },
+        });
+
+        res.status(200).json({
+            success: true,
+            data: savedAnswer,
+            message: "Answer synchronized successfully",
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const submitTestAttempt = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+        const { attemptId } = req.params as { attemptId: string };
+        const studentId = req.user?.id as string;
+        if(!attemptId.trim()) {
+            throw new BadRequestError("Attempt ID is required.");
+        }
+
+        const attempt = await prisma.testAttempt.findFirst({
+            where: {
+                id: attemptId,
+                studentId: studentId,
+                submittedAt: null,
+            },
+            include: {
+                answers: true,
+                questionPaper: {
+                    include: { questions: {
+                        include: { options: true },
+                    } },
+                },
+            },
+        });
+        if (!attempt) {
+            throw new NotFoundError("Active test attempt not found.");
+        }
+
+        let totalScore = 0;
+
+        for(const question of attempt.questionPaper.questions) {
+            const studentAnswer = attempt.answers.find(a => a.questionId === question.id);
+            if (!studentAnswer) continue;
+
+            let isCorrect = false;
+            
+            if (question.type.toUpperCase() === "NAT") {
+                isCorrect = studentAnswer.numericalAnswer === question.numericalCorrectAnswer;
+            } else if (question.type.toUpperCase() === "MCQ") {
+                const correctOption = question.options.find(o => o.isCorrect);
+                isCorrect = studentAnswer.selectedOptionId === correctOption?.id;
+            } else if (question.type.toUpperCase() === "MSQ") {
+                const correctIds = question.options.filter(o => o.isCorrect).map(o => o.id).sort();
+                const studentIds = (studentAnswer.selectedOptionId || "").split(",").sort();
+                isCorrect = JSON.stringify(correctIds) === JSON.stringify(studentIds);
+            }
+            if(isCorrect) totalScore += question.marks;
+        }
+        
+        const finalResult = await prisma.testAttempt.update({
+            where: { id: attemptId },
+            data: { score: totalScore, submittedAt: new Date() },
+        });
+
+        res.status(201).json({
+            success: true,
+            data: { score: totalScore, attemptId: finalResult.id },
+            message: `Test submitted and graded successfully.`,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getMyAttemptsForPaper = async (req:AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+        const { paperId } = req.params as { paperId: string };
+        const studentId = req.user?.id as string;
+        if(paperId?.trim()) {
+            throw new BadRequestError("Paper ID is required.");
+        }
+
+        const attempts = await prisma.testAttempt.findMany({
+            where: { studentId: studentId, questionPaperId: paperId },
+            select: { id: true, type: true, score: true, submittedAt: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        res.status(200).json({
+            success: true,
+            data: attempts,
+            message: "Your test attempts for this paper retrieved successfully.",
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getAttemptReview = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+        const { attemptId } = req.params as { attemptId: string };
+        const userId = req.user?.id as string;
+        const userRole = req.membership?.role as string;
+        if(!attemptId?.trim()) {
+            throw new BadRequestError("Attempt ID is required.");
+        }
+
+        const attempt = await prisma.testAttempt.findUnique({
+            where: { id: attemptId },
+            include: {
+                answers: true,
+                questionPaper: {
+                    include: { questions: {
+                        include: { options: true }
+                    } },
+                },
+            },
+        });
+        if (!attempt) {
+            throw new NotFoundError("Test attempt not found.");
+        }
+
+        const isOwner = attempt.studentId === userId;
+        const isTutor = ['CREATOR', 'CO_TUTOR'].includes(userRole);
+        if (!isOwner && !isTutor) {
+            throw new ForbiddenError("Access denied.");
+        }
+
+        const reviewData = attempt.questionPaper.questions.map(q => {
+            const studentAns = attempt.answers.find(a => a.questionId === q.id);
+            return {
+                id: q.id, text: q.text, type: q.type, marks: q.marks,
+                correctAnswer: q.type.toUpperCase() === "NAT"
+                                ? q.numericalCorrectAnswer
+                                : q.options.filter(o => o.isCorrect).map(o => o.id),
+                studentAnswer: q.type.toUpperCase() === "NAT"
+                                ? studentAns?.numericalAnswer
+                                : studentAns?.selectedOptionId,
+                options: q.options.map(o => ({ id: o.id, text: o.text, isCorrect: o.isCorrect })),
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                title: attempt.questionPaper.title,
+                score: attempt.score,
+                details: reviewData,
+            },
+            message: "Test attempt review retrieved successfully",
+        });
+    } catch (error) {
+        next(error);
+    }
+};
