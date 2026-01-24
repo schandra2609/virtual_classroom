@@ -1,8 +1,9 @@
 /**
  * @file passport.config.ts
  * @module Config/AuthStrategies
- * @description Defines authentication strategies for Passport.js.
- * Primarily handles the Google OAuth 2.0 flow for student and tutor social login.
+ * @description This module defines the Passport.js configuration for Google OAuth 2.0.
+ * It streamlines the authentication flow by offloading identity verification to Google.
+ * @author Sayan Chandra
  */
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import type { Profile, VerifyCallback } from "passport-google-oauth20";
@@ -11,12 +12,12 @@ import { ENV_CONFIG } from "./env.config.ts";
 
 /**
  * @function configureGoogleStrategy
- * @description Registers the Google OAuth strategy with Passport.
- * Defines the client credentials and the callback URL.
- * @param {PassportStatic} passport - The Passport instance to configure.
- * @example
- * // In app.ts
- * configureGoogleStrategy(passport);
+ * @description Initializes the Google OAuth Strategy.
+ * Flow:
+ * 1. Client hits /auth/google.
+ * 2. Passport redirects to Google login.
+ * 3. Upon success, Google redirects to the callbackURL with a profile.
+ * @param {PassportStatic} passport - The global Passport instance.
  */
 export const configureGoogleStrategy = (passport: PassportStatic): void => {
     passport.use(
@@ -28,12 +29,14 @@ export const configureGoogleStrategy = (passport: PassportStatic): void => {
             },
             /**
              * @callback strategyCallback
-             * @param _accessToken - OAuth access token (unused)
-             * @param _refreshToken - OAuth refresh token (unused)
-             * @param profile - The user profile returned by Google
-             * @param done - Signal authentication completion
+             * @description The internal callback triggered after a successful Google login.
+             * @param {string} _accessToken - OAuth access token.
+             * @param {string} _refreshToken - OAuth refresh token.
+             * @param {Profile} profile - The user data returned by Google.
+             * @param {VerifyCallback} done - Signal Passport to proceed.
              */
             (_accessToken: string, _refreshToken: string, profile: Profile, done: VerifyCallback) => {
+                // At this stage, the profile is passed to the Auth Controller
                 return done(null, profile);
             }
         )

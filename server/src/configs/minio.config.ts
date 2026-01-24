@@ -1,8 +1,9 @@
 /**
  * @file minio.config.ts
  * @module Config/Storage
- * @description Configuration and initialization logic for MinIO Object Storage.
- * Handles bucket creation and storage provider connectivity.
+ * @description Manages the connection and lifecycle of the MinIO Object Storage server.
+ * Responsible for storing binary assets like profile photos and classroom attachments.
+ * @author Sayan Chandra
  */
 import * as Minio from "minio";
 import Logger from "../utils/Logger.ts";
@@ -11,7 +12,8 @@ import { ENV_CONFIG } from "./env.config.ts";
 /**
  * @constant minioClient
  * @type {Minio.Client}
- * @description Configured SDK instance for communicating with the MinIO server.
+ * @description The SDK client used to interact with the MinIO/S3 API.
+ * Configured with endpoint, port, and security credentials from environment variables.
  */
 export const minioClient: Minio.Client = new Minio.Client({
     endPoint: ENV_CONFIG.MINIO.ENDPOINT,
@@ -24,17 +26,17 @@ export const minioClient: Minio.Client = new Minio.Client({
 /**
  * @constant BucketName
  * @type {string}
- * @description The primary bucket name where all application assets are stored.
+ * @description The primary logical container for all application file uploads.
  */
 export const BucketName: string = ENV_CONFIG.MINIO.BUCKET;
 
 /**
  * @async
  * @function initializeStorage
- * @description Ensures the required storage infrastructure is ready.
- * If the configured bucket does not exist, it creates it with the default region.
+ * @description A self-healing initialization script that runs on startup.
+ * It checks if the primary bucket exists; if not, it automatically provisions it.
+ * This ensures the application is "Plug-and-Play" across different environments.
  * @returns {Promise<void>}
- * @throws {Error} Logs error if bucket check or creation fails.
  */
 export const initializeStorage = async () : Promise<void> => {
     try {
@@ -42,6 +44,7 @@ export const initializeStorage = async () : Promise<void> => {
         if(existingBucket) {
             Logger.log(`MinIO: Bucket "${BucketName}" is ready.`);
         } else {
+            // US-East-1 is used as the default fallback region for S3 compatibility
             await minioClient.makeBucket(BucketName, 'us-east-1');
             Logger.log(`MinIO: Bucket "${BucketName}" created successfully.`);
         }

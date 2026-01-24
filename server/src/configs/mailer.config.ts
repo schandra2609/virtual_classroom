@@ -1,8 +1,10 @@
 /**
  * @file mailer.config.ts
  * @module Config/Mailer
- * @description Configures Nodemailer for automated transactional emails.
- * Primary use cases include email verification, password resets, and classroom invitations.
+ * @description Configures the SMTP transport layer using Nodemailer.
+ * This service facilitates transactional emails such as OTP verification, 
+ * classroom invites, and password recovery.
+ * @author Sayan Chandra
  */
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
@@ -12,7 +14,8 @@ import Logger from '../utils/Logger.ts';
 /**
  * @constant transporter
  * @type {Transporter}
- * @description The Nodemailer transporter instance using Gmail's SMTP service.
+ * @description The primary Nodemailer transporter. 
+ * It is configured to use Gmail's SMTP relay with secure App Password authentication.
  */
 export const transporter: Transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -25,9 +28,11 @@ export const transporter: Transporter = nodemailer.createTransport({
 /**
  * @async
  * @function verifyTransporter
- * @description Validates the SMTP connection credentials on server startup.
+ * @description Performs a "Handshake" with the SMTP server during the application 
+ * bootstrap sequence. This proactive check ensures the server won't start 
+ * if the mail credentials are invalid.
  * @returns {Promise<void>}
- * @throws {Error} Logs error if fails to establish connection with MinIO server.
+ * @throws {Error} If the SMTP verification fails.
  */
 export const verifyTransporter = async (): Promise<void> => {
     try {
