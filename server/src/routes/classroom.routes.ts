@@ -48,7 +48,7 @@ router.route("/:classroomId/refresh-code")
 router.route("/:classroomId/transfer-ownership")
     .patch(isCreator as any, transferOwnership as any);
 
-router.use("/announcements", isMember as any, announcementRouter);
-router.use("/members", isClassroomTutor as any, memberRouter);
+router.use("/:classroomId/announcements", isMember as any, announcementRouter);
+router.use("/:classroomId/members", isClassroomTutor as any, memberRouter);
 
 export default router;
