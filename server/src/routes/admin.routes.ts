@@ -1,15 +1,15 @@
 import { Router } from "express";
-import { approveTutor, getTutorApplications, rejectTutor } from "../controllers/admin.controller.ts";
+import * as adminController from "../controllers/admin.controller.ts";
 
 const router: Router = Router();
 
 router.route("/tutors")
-    .get(getTutorApplications as any);
+    .get(adminController.getTutorApplications as any);
 
 router.route("/tutors/:tutorId/approve")
-    .patch(approveTutor as any);
+    .patch(adminController.approveTutor as any);
 
 router.route("/tutors/:tutorId/reject")
-    .patch(rejectTutor as any);
+    .patch(adminController.rejectTutor as any);
 
 export default router;

@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { createComment, deleteComment, getCommentsForAnnouncement, updateComment } from "../controllers/comment.controller.ts";
+import * as commentController from "../controllers/comment.controller.ts";
 
 const router: Router = Router({ mergeParams: true });
 
 router.route("/")
-    .get(getCommentsForAnnouncement as any)
-    .post(createComment as any);
+    .get(commentController.getCommentsForAnnouncement as any)
+    .post(commentController.createComment as any);
 
 router.route("/:commentId")
-    .patch(updateComment as any)
-    .delete(deleteComment as any);
+    .patch(commentController.updateComment as any)
+    .delete(commentController.deleteComment as any);
 
 export default router;

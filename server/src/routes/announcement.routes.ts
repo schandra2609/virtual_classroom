@@ -1,16 +1,17 @@
 import { Router } from "express";
 import commentRouter from "./comment.routes.ts";
 import { isClassroomTutor } from "../middlewares/auth.middleware.ts";
-import { createAnnouncement, deleteAnnouncement, getAnnouncements } from "../controllers/announcement.controller.ts";
+import * as announcementController from "../controllers/announcement.controller.ts";
+import { upload } from "../middlewares/upload.middleware.ts";
 
 const router: Router = Router({ mergeParams: true });
 
 router.route("/")
-    .get(getAnnouncements as any)
-    .post(isClassroomTutor as any, createAnnouncement as any);
+    .get(announcementController.getAnnouncements as any)
+    .post(isClassroomTutor as any, upload.array("attachments", 5), announcementController.createAnnouncement as any);
 
 router.route("/:announcementId")
-    .delete(isClassroomTutor as any, deleteAnnouncement as any);
+    .delete(isClassroomTutor as any, announcementController.deleteAnnouncement as any);
 
 router.use("/:announcementId/comments", commentRouter);
 

@@ -1,21 +1,21 @@
 import { Router } from "express";
-import { completeUserProfile, handleGoogleCallback, login, logout, refreshAccessTokens, register } from "../controllers/auth.controller.ts";
+import * as authController from "../controllers/auth.controller.ts";
 import { verifyToken } from "../middlewares/auth.middleware.ts";
 import passport from "passport";
 
 const router: Router = Router();
 
 router.route("/register")
-    .post(register);
+    .post(authController.register);
 
 router.route("/login")
-    .post(login);
+    .post(authController.login);
 
 router.route("/logout")
-    .post(verifyToken as any, logout as any);
+    .post(verifyToken as any, authController.logout as any);
 
 router.route("/refresh-token")
-    .post(refreshAccessTokens);
+    .post(authController.refreshAccessTokens);
 
 router.route("/google")
     .get(passport.authenticate("google", {
@@ -27,10 +27,10 @@ router.route("/google/callback")
     .get(passport.authenticate("google", {
         session: false,
         failureRedirect: "/login"
-    }), handleGoogleCallback as any);
+    }), authController.handleGoogleCallback as any);
 
 router.route("/complete-profile")
-    .post(completeUserProfile);
+    .post(authController.completeUserProfile);
 
 
 export default router;

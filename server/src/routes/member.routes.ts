@@ -1,20 +1,19 @@
 import { Router } from "express";
-import { isClassroomTutor } from "../middlewares/auth.middleware.ts";
-import { approveStudent, getClassroomMembers, removeMember, updateStudentPayment } from "../controllers/member.controller.ts";
+import * as memberController from "../controllers/member.controller.ts";
 
 const router: Router = Router({ mergeParams: true });
 
 router.route("/")
-    .get(getClassroomMembers as any);
+    .get(memberController.getClassroomMembers as any);
 
 router.route("/:memberId")
-    .delete(removeMember as any);
+    .delete(memberController.removeMember as any);
 
 router.route("/:studentId/approve")
-    .patch(approveStudent as any);
+    .patch(memberController.approveStudent as any);
 
 router
     .route("/:studentId/payment")
-    .patch(updateStudentPayment as any);
+    .patch(memberController.updateStudentPayment as any);
 
 export default router;
