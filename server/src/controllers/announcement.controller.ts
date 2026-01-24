@@ -1,13 +1,8 @@
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
-import { BadRequestError, NotFoundError, UnauthorizedError } from "../errors/handler.error.ts";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../errors/handler.error.ts";
 import { prisma } from "../configs/database.config.ts";
-
-type Attachment = {
-    url: string,
-    fileName: string,
-    fileType: string,
-};
+import Storage from "../utils/Storage.ts";
 
 export const getAnnouncements = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -19,7 +14,7 @@ export const getAnnouncements = async (req: AuthenticatedRequest, res: Response,
         const announcements = await prisma.announcement.findMany({
             where: { classroomId: classroomId },
             include: {
-                author: { select: { fullName: true, id: true } },
+                author: { select: { fullName: true, profilePhotoUrl: true } },
                 attachments: true,
                 _count: { select: { comments: true } },
             },
@@ -39,47 +34,50 @@ export const createAnnouncement = async (req: AuthenticatedRequest, res: Respons
     try {
         const { classroomId } = req.params as { classroomId: string };
         const authorId = req.user?.id as string;
-        const { message, attachments } = req.body as { message: string, attachments: Attachment[]};
-        if (typeof message !== "string" || !message.trim()) {
-            throw new BadRequestError("Announcement message is required.");
+        const { message } = req.body as { message: string };
+        if (![classroomId, message].every((field) => field.trim())) {
+            throw new BadRequestError("Announcement message, classroom ID are required.");
         }
 
-        const hasValidAttachments = Array.isArray(attachments)
-                                && attachments.length > 0
-                                && attachments.every(att =>
-                                    typeof att === "object" &&
-                                    typeof att.url === "string" && att.url.trim() &&
-                                    typeof att.fileName === "string" && att.fileName.trim() &&
-                                    typeof att.fileType === "string" && att.fileType.trim()
-                                );
+        const files = req.files as Express.Multer.File[];
 
-        const newAnnouncement = await prisma.$transaction(async (txn) => {
-            const announcement = await txn.announcement.create({
+        const announcement: any = await prisma.$transaction(async (txn) => {
+            const newAnnouncement = await txn.announcement.create({
                 data: {
                     message: message?.trim(),
-                    classroomId: classroomId,
-                    authorId: authorId,
+                    classroomId: classroomId.trim(),
+                    authorId: authorId.trim(),
                 }
             });
-            if(hasValidAttachments) {
-                await txn.attachment.createMany({
-                    data: attachments!.map(att => ({
-                        url: att.url.trim(),
-                        fileName: att.fileName.trim(),
-                        fileType: att.fileType.trim(),
-                        announcementId: announcement.id,
-                    })),
-                });
+            if(files && files.length > 0) {
+                const attachmentData = await Promise.all(
+                    files.map(async (file) => {
+                        const storedPath = await Storage.uploadBuffer(
+                            file.buffer,
+                            file.originalname,
+                            file.mimetype,
+                            `classrooms/${classroomId}/attachments/`
+                        );
+                        return {
+                            url: storedPath,
+                            fileName: file.originalname,
+                            fileType: file.mimetype,
+                            announcementId: newAnnouncement.id,
+                        };
+                    })
+                );
+                await txn.attachment.createMany({ data: attachmentData });
             }
+
             return txn.announcement.findUnique({
                 where: { id: announcement.id },
-                include: { attachments: true },
+                include: { attachments: true, author: { select: { fullName: true } } },
             });
         });
 
         res.status(201).json({
             success: true,
-            data: newAnnouncement,
+            data: announcement,
             message: "Announcement created successfully",
         });
     } catch (error) {
@@ -95,12 +93,18 @@ export const deleteAnnouncement = async (req: AuthenticatedRequest, res: Respons
             throw new BadRequestError("Announcement ID is required.");
         }
 
-        const originalAnnouncement = await prisma.announcement.findUnique({ where: { id: announcementId } });
-        if (!originalAnnouncement) {
-            throw new NotFoundError("Announcement not found.");
-        }
-        if (req.membership?.role !== "CREATOR" || originalAnnouncement.authorId !== userId) {
-            throw new UnauthorizedError("You can only delete your own announcements.");
+        const announcement = await prisma.announcement.findUnique({
+            where: { id: announcementId },
+            include: { attachments: true },
+        });
+        if (!announcement) throw new NotFoundError("Announcement not found.");
+
+        const isAuthor = announcement.authorId === userId;
+        const isCreator = req.membership?.role === "CREATOR";
+        if (!isCreator && !isAuthor) throw new ForbiddenError("You can only delete your own announcements.");
+
+        if (announcement.attachments.length > 0) {
+            await Promise.all(announcement.attachments.map(att => Storage.deleteFile(att.url)));
         }
 
         await prisma.announcement.delete({ where: { id: announcementId } });

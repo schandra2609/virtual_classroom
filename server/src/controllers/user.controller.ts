@@ -1,9 +1,10 @@
 import type { NextFunction, Response } from "express";
 import bcrypt from "bcrypt";
-import { BadRequestError, ForbiddenError } from "../errors/handler.error.ts";
+import { BadRequestError } from "../errors/handler.error.ts";
 import { prisma } from "../configs/database.config.ts";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
+import Storage from "../utils/Storage.ts";
 
 export const getCurrentUser = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -50,6 +51,63 @@ export const updateCurrentUser = async (req: AuthenticatedRequest, res: Response
         });
     } catch (error) {
         next(error);
+    }
+};
+
+export const uploadProfilePhoto = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+        if (!req.file) throw new BadRequestError("No image file provided.");
+        const userId = req.user?.id as string;
+
+        const fileName = await Storage.uploadBuffer(
+            req.file.buffer,
+            req.file.originalname,
+            req.file.mimetype,
+            "profiles/",
+        );
+
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: { profilePhotoUrl: fileName },
+            select: { id: true, profilePhotoUrl: true }
+        });
+
+        res.status(200).json({
+            success: true,
+            data: updatedUser,
+            message: "Profile photo updated successfully.",
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const uploadQualificationProof = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    try {
+        if (!req.file) throw new BadRequestError("No document provided.");
+
+        const fileName = await Storage.uploadBuffer(
+            req.file.buffer,
+            req.file.originalname,
+            req.file.mimetype,
+            "qualifications/"
+        );
+
+        await prisma.user.update({
+            where: { id: req.user?.id as string },
+            data: {
+                tutorQualificationUrl: fileName,
+                tutorVerificationStatus: "PENDING",
+                tutorStatusUpdatedAt: new Date()
+            }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: "Qualification proof uploaded and is now under review."
+        });
+    } catch (error) {
+        next(error)
     }
 };
 
@@ -139,42 +197,6 @@ export const verifyEmail = async (req: AuthenticatedRequest, res: Response, next
         res.status(200).json({
             success: true,
             message: "Email verified successfully",
-        });
-    } catch (error) {
-        next(error);
-    }
-};
-
-export const submitQualification = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    try {
-        const { qualificationUrl } = req.body;
-        if(!qualificationUrl?.trim()) {
-            throw new BadRequestError("Qualification URL is required");
-        }
-
-        const user = await prisma.user.findUnique({
-            where: { id: req.user?.id as string },
-        });
-        if(user?.tutorVerificationStatus === "REJECTED") {
-            const twoMonthsAgo = dayjs().subtract(2, 'months');
-            const lastRejectionDate = dayjs(user.tutorStatusUpdatedAt);
-            if(lastRejectionDate.isAfter(twoMonthsAgo)) {
-                throw new ForbiddenError(`You can't apply till ${lastRejectionDate.add(2, 'months').format('DD MM YYYY')}`);
-            }
-        }
-
-        await prisma.user.update({
-            where: { id: req.user?.id as string },
-            data: {
-                tutorQualificationUrl: qualificationUrl.trim(),
-                tutorVerificationStatus: "PENDING",
-                tutorStatusUpdatedAt: new Date(),
-            },
-        });
-
-        res.status(200).json({
-            success: true,
-            message: "Qualification submitted successfully. Your application is under review.",
         });
     } catch (error) {
         next(error);
