@@ -190,6 +190,8 @@ model TestAttempt {
   student       User          @relation(fields: [studentId], references: [id], onDelete: Cascade)
   questionPaper QuestionPaper @relation(fields: [questionPaperId], references: [id], onDelete: Cascade)
   answers       Answer[]
+
+  @id([testAttemptId, questionId])
 }
 
 model Answer {
