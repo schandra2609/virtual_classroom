@@ -82,6 +82,8 @@ model User {
   createdQuestionPapers   QuestionPaper[]
   announcements           Announcement[]
   comments                Comment[]
+  assignments             Assignment[]
+  submissions             Submission[]
   testAttempts            TestAttempt[]
   approvedMemberships     ClassroomMember[]       @relation("ApprovedByTutor")
   classroomInvitations    ClassroomInvitation[]
@@ -98,6 +100,7 @@ model Classroom {
 
   members         ClassroomMember[]
   announcements   Announcement[]
+  assignments     Assignment[]
   questionPapers  QuestionPaper[]
   invitations     ClassroomInvitation[]
 }
@@ -227,15 +230,52 @@ model Announcement {
   comments    Comment[]
 }
 
-model Attachment {
-  id             String       @id @default(cuid())
-  url            String
-  fileName       String
-  fileType       String
-  createdAt      DateTime     @default(now())
-  announcementId String
+model Assignment {
+  id            String        @id @default(cuid())
+  title         String
+  instruction   String        @db.Text
+  deadline      DateTime
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
-  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  classroomId   String
+  authorId      String
+  classroom     Classroom     @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  author        User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  attachments   Attachment[]
+  submissions   Submission[]
+}
+
+model Submission {
+  id              String          @id @default(cuid())
+  submittedAt     DateTime        @default(now())
+  content         String?         @db.Text
+
+  assignmentId    String
+  studentId       String
+  assignment      Assignment      @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student         User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  attachments       Attachment[]
+
+  @@unique([assignmentId, studentId])
+}
+
+model Attachment {
+  id              String       @id @default(cuid())
+  url             String
+  fileName        String
+  fileType        String
+  createdAt       DateTime     @default(now())
+
+  announcementId  String?
+  assignmentId    String?
+  submissionId    String?
+
+  announcement    Announcement?   @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  assignment      Assignment?     @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  submission      Submission?     @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 }
 
 model Comment {
