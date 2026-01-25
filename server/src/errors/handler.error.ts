@@ -4,7 +4,7 @@
  * @description A collection of specialized error classes for standard HTTP scenarios.
  * These are used throughout the controllers and middlewares to trigger specific status codes.
  */
-import HttpError from "./http.error.js";
+import HttpError from "./http.error.ts";
 
 /**
  * @class BadRequestError

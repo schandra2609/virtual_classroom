@@ -8,7 +8,7 @@
  */
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
-import { ENV_CONFIG } from './env.config.js';
+import { ENV_CONFIG } from './env.config.ts';
 import Logger from '../utils/Logger.ts';
 
 /**
