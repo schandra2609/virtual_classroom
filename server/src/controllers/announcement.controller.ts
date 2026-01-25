@@ -2,7 +2,7 @@ import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../errors/handler.error.ts";
 import { prisma } from "../configs/database.config.ts";
-import Storage from "../utils/Storage.ts";
+import { deleteFile, uploadBuffer } from "../services/storage.service.ts";
 
 export const getAnnouncements = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -52,7 +52,7 @@ export const createAnnouncement = async (req: AuthenticatedRequest, res: Respons
             if(files && files.length > 0) {
                 const attachmentData = await Promise.all(
                     files.map(async (file) => {
-                        const storedPath = await Storage.uploadBuffer(
+                        const storedPath = await uploadBuffer(
                             file.buffer,
                             file.originalname,
                             file.mimetype,
@@ -104,7 +104,7 @@ export const deleteAnnouncement = async (req: AuthenticatedRequest, res: Respons
         if (!isCreator && !isAuthor) throw new ForbiddenError("You can only delete your own announcements.");
 
         if (announcement.attachments.length > 0) {
-            await Promise.all(announcement.attachments.map(att => Storage.deleteFile(att.url)));
+            await Promise.all(announcement.attachments.map(att => deleteFile(att.url)));
         }
 
         await prisma.announcement.delete({ where: { id: announcementId } });

@@ -1,10 +1,10 @@
 import type { NextFunction, Response } from "express";
+import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import bcrypt from "bcrypt";
 import { BadRequestError } from "../errors/handler.error.ts";
 import { prisma } from "../configs/database.config.ts";
-import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
-import Storage from "../utils/Storage.ts";
+import { uploadBuffer } from "../services/storage.service.ts";
 
 export const getCurrentUser = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -59,7 +59,7 @@ export const uploadProfilePhoto = async (req: AuthenticatedRequest, res: Respons
         if (!req.file) throw new BadRequestError("No image file provided.");
         const userId = req.user?.id as string;
 
-        const fileName = await Storage.uploadBuffer(
+        const fileName = await uploadBuffer(
             req.file.buffer,
             req.file.originalname,
             req.file.mimetype,
@@ -86,7 +86,7 @@ export const uploadQualificationProof = async (req: AuthenticatedRequest, res: R
     try {
         if (!req.file) throw new BadRequestError("No document provided.");
 
-        const fileName = await Storage.uploadBuffer(
+        const fileName = await uploadBuffer(
             req.file.buffer,
             req.file.originalname,
             req.file.mimetype,

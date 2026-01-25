@@ -1,5 +1,6 @@
 import { Router } from "express";
 import announcementRouter from "./announcement.routes.ts";
+import assignmentRouter from "./assignment.routes.ts";
 import memberRouter from "./member.routes.ts";
 import qPaperRouter from "./qpaper.routes.ts";
 import {
@@ -37,6 +38,7 @@ router.route("/:classroomId/transfer-ownership")
     .patch(isCreator as any, classroomController.transferOwnership as any);
 
 router.use("/:classroomId/announcements", isMember as any, announcementRouter);
+router.use("/:classroomId/assignments", isMember as any, assignmentRouter);
 router.use("/:classroomId/members", isClassroomTutor as any, memberRouter);
 router.use("/:classroomId/papers", isMember as any, qPaperRouter);
 
