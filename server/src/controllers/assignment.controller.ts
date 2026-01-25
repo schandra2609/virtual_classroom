@@ -307,4 +307,3 @@ export const getAssignmentSubmissions = async (req: AuthenticatedRequest, res: R
         next(error);
     }
 };
-

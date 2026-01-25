@@ -1,10 +1,28 @@
+/**
+ * @file member.controller.ts
+ * @module Controllers/Classroom/Members
+ * @description Controller handling classroom-level user management. 
+ * Includes roster retrieval, removal logic with hierarchical role checks, 
+ * student admission approval, and subscription/payment management.
+ * @author Sayan Chandra
+ */
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../errors/handler.error.ts";
 import { prisma } from "../configs/database.config.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
 
-export const getClassroomMembers = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function getClassroomMembers
+ * @description Retrieves a list of classroom members filtered by their membership status.
+ * @param {AuthenticatedRequest} req - Request containing 'classroomId' in params and 'status' in query.
+ * @param {Response} res - Success response with the array of members and their basic profiles.
+ * @param {NextFunction} next - Error propagation.
+ * @throws {BadRequestError} 400 - If classroomId or status is missing.
+ * @returns {Promise<void>}
+ */
+export const getClassroomMembers = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { classroomId } = req.params as { classroomId: string };
         const { status } = req.query as { status: string };
@@ -12,9 +30,11 @@ export const getClassroomMembers = async (req: AuthenticatedRequest, res: Respon
             throw new BadRequestError("Classroom ID, status are required.");
         }
 
+        const normalizedStatus = status?.trim().toUpperCase();
         const whereClause: Partial<{ classroomId: string, membershipStatus: string }> = { classroomId: classroomId };
-        if(["APPROVED", "PENDING"].includes(status.toUpperCase())) {
-            whereClause.membershipStatus = status.toUpperCase();
+        // Apply status filter if it matches valid enum values
+        if(["APPROVED", "PENDING"].includes(normalizedStatus)) {
+            whereClause.membershipStatus = normalizedStatus;
         }
 
         const members = await prisma.classroomMember.findMany({
@@ -33,10 +53,21 @@ export const getClassroomMembers = async (req: AuthenticatedRequest, res: Respon
     }
 };
 
-export const removeMember = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function removeMember
+ * @description Removes a user from the classroom. Enforces hierarchical security rules.
+ * **Security Rules:**
+ * 1. A user cannot remove themselves (must use /leave route).
+ * 2. The 'CREATOR' (owner) cannot be removed from the classroom.
+ * 3. 'CO_TUTOR's cannot remove other 'CO_TUTOR's; only the 'CREATOR' can do this.
+ * @param {AuthenticatedRequest} req - Request containing 'classroomId' and 'memberId' (the target) in params.
+ * @returns {Promise<void>}
+ */
+export const removeMember = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { classroomId, memberId } = req.params as { classroomId: string, memberId: string };
-        const remover = req.membership;
+        const remover = req.membership; // Populated by isClassroomTutor middleware
         if(![classroomId, memberId].every((field) => field.trim())) {
             throw new BadRequestError("Classroom ID, member ID are required.");
         }
@@ -50,6 +81,7 @@ export const removeMember = async (req: AuthenticatedRequest, res: Response, nex
         if (!memberToRemove) {
             throw new NotFoundError("Member not found in this classroom");
         }
+        /** @section Hierarchical Permission Validation */
         if (memberToRemove.role === 'CREATOR') {
             throw new ForbiddenError("The creator of the classroom cannot be removed.");
         }
@@ -69,7 +101,15 @@ export const removeMember = async (req: AuthenticatedRequest, res: Response, nex
     }
 };
 
-export const approveStudent = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function approveStudent
+ * @description Transitions a student's membership from 'PENDING' to 'APPROVED'.
+ * This grants the student access to classroom materials and announcements.
+ * @param {AuthenticatedRequest} req - Request containing 'classroomId' and 'studentId' in params.
+ * @returns {Promise<void>}
+ */
+export const approveStudent = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const approverId = req.user?.id as string;
         const { classroomId, studentId } = req.params as { classroomId: string, studentId: string };
@@ -102,7 +142,17 @@ export const approveStudent = async (req: AuthenticatedRequest, res: Response, n
     }
 };
 
-export const updateStudentPayment = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function updateStudentPayment
+ * @description Manages fee-based access validity (subscription management).
+ * **Date Logic:**
+ * - If the student's current access is still valid, the new duration is appended to the expiry date.
+ * - If the student's access has expired, the duration is added starting from the current time.
+ * @param {AuthenticatedRequest} req - Body: { durationInMonths }. Params: { classroomId, studentId }.
+ * @returns {Promise<void>}
+ */
+export const updateStudentPayment = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { classroomId, studentId } = req.params as { classroomId: string, studentId: string };
         if(![classroomId, studentId].every((field) => field.trim())) {
@@ -121,8 +171,11 @@ export const updateStudentPayment = async (req: AuthenticatedRequest, res: Respo
             throw new NotFoundError("No student membership found in the classroom");
         }
 
+        /** @section Expiry Calculation Logic */
         const now = dayjs();
         const currentExpiry = dayjs(membership.feePaidUntil);
+
+        // Calculate the base date to start adding time from
         const startDate = currentExpiry.isAfter(now) ? currentExpiry : now;
         const newExpiryDate = startDate.add(durationInMonths, 'month').toDate();
         const updatedmembership = await prisma.classroomMember.update({

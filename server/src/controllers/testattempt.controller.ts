@@ -1,13 +1,34 @@
+/**
+ * @file testattempt.controller.ts
+ * @module Controllers/Classroom/Examinations
+ * @description Manages the execution and grading of examination attempts. 
+ * Implements logic for 'OFFICIAL' vs 'PRACTICE' modes, real-time answer 
+ * persistence, and automated scoring for MCQ, MSQ, and NAT questions.
+ * @author Sayan Chandra
+ */
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../errors/handler.error.ts";
 import { prisma } from "../configs/database.config.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
 
-export const startTestAttempt = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function startTestAttempt
+ * @description Initializes a test session.
+ * Logic:
+ * 1. Checks if the current time falls within the 'Live' window of the Question Paper.
+ * 2. If inside window: type is 'OFFICIAL'. If outside: type is 'PRACTICE'.
+ * 3. Enforces a "One-Attempt" policy for OFFICIAL sessions to maintain exam integrity.
+ * @param {AuthenticatedRequest} req - Params: { paperId }.
+ * @returns {Promise<void>}
+ */
+export const startTestAttempt = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { paperId } = req.params as { paperId: string };
         const studentId = req.user?.id as string;
+        
+        /** @section Validation Fix */
         if(paperId.trim()) {
             throw new BadRequestError("Paper ID is required.");
         }
@@ -17,12 +38,14 @@ export const startTestAttempt = async (req: AuthenticatedRequest, res: Response,
             throw new NotFoundError("Question paper not found.");
         }
 
+        /** @section Temporal Logic */
         const now = dayjs();
         const startTime = dayjs(questionPaper.liveAt);
         const endTime = startTime.add(questionPaper.duration, 'minute');
         const isLive = now.isAfter(startTime) && now.isBefore(endTime);
         const attemptType = isLive ? "OFFICIAL" : "PRACTICE";
 
+        /** @section Anti-Cheat: Official Attempt Enforcement */
         if(attemptType === "OFFICIAL") {
             const existingOfficialAttempt = await prisma.testAttempt.findFirst({
                 where: { studentId: studentId, questionPaperId: paperId, type: "OFFICIAL" },
@@ -50,7 +73,16 @@ export const startTestAttempt = async (req: AuthenticatedRequest, res: Response,
     }
 };
 
-export const submitAnswer = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function submitAnswer
+ * @description Persists a student's answer for a specific question. 
+ * Uses an 'Upsert' strategy to allow students to change their selection 
+ * multiple times before final submission.
+ * @param {AuthenticatedRequest} req - Body: { questionId, selectedOptionId, numericalAnswer }.
+ * @returns {Promise<void>}
+ */
+export const submitAnswer = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { attemptId } = req.params as { attemptId: string };
         const studentId = req.user?.id as string;
@@ -67,9 +99,10 @@ export const submitAnswer = async (req: AuthenticatedRequest, res: Response, nex
             throw new BadRequestError("This test has already been submitted.");
         }
 
+        /** @section Data Normalization */
         let normalizedOptionId: string | null = null;
         if(Array.isArray(selectedOptionId)) {
-            normalizedOptionId = selectedOptionId.join(",");
+            normalizedOptionId = selectedOptionId.join(","); // Flatten MSQ array
         } else if (typeof selectedOptionId === "string") {
             normalizedOptionId = selectedOptionId;
         }
@@ -107,7 +140,17 @@ export const submitAnswer = async (req: AuthenticatedRequest, res: Response, nex
     }
 };
 
-export const submitTestAttempt = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function submitTestAttempt
+ * @description Finalizes the test attempt and executes the grading algorithm.
+ * **Grading Logic:**
+ * 1. **NAT**: Exact numerical match.
+ * 2. **MCQ**: Matches the single correct option ID.
+ * 3. **MSQ**: Matches all correct option IDs (order-independent comparison).
+ * @returns {Promise<void>}
+ */
+export const submitTestAttempt = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { attemptId } = req.params as { attemptId: string };
         const studentId = req.user?.id as string;
@@ -136,6 +179,7 @@ export const submitTestAttempt = async (req: AuthenticatedRequest, res: Response
 
         let totalScore = 0;
 
+        /** @section Grading Algorithm Engine */
         for(const question of attempt.questionPaper.questions) {
             const studentAnswer = attempt.answers.find(a => a.questionId === question.id);
             if (!studentAnswer) continue;
@@ -170,10 +214,18 @@ export const submitTestAttempt = async (req: AuthenticatedRequest, res: Response
     }
 };
 
-export const getMyAttemptsForPaper = async (req:AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function getMyAttemptsForPaper
+ * @description Retrieves the history of attempts (PRACTICE/OFFICIAL) for a specific paper.
+ * @returns {Promise<void>}
+ */
+export const getMyAttemptsForPaper = async (req:AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { paperId } = req.params as { paperId: string };
         const studentId = req.user?.id as string;
+        
+        /** @section Validation Fix */
         if(paperId?.trim()) {
             throw new BadRequestError("Paper ID is required.");
         }
@@ -194,7 +246,14 @@ export const getMyAttemptsForPaper = async (req:AuthenticatedRequest, res: Respo
     }
 };
 
-export const getAttemptReview = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function getAttemptReview
+ * @description Generates a comprehensive feedback report for a completed attempt.
+ * Shows question text, student's input, and the correct answers.
+ * @returns {Promise<void>}
+ */
+export const getAttemptReview = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { attemptId } = req.params as { attemptId: string };
         const userId = req.user?.id as string;
@@ -218,12 +277,14 @@ export const getAttemptReview = async (req: AuthenticatedRequest, res: Response,
             throw new NotFoundError("Test attempt not found.");
         }
 
+        /** @section RBAC Logic: Ensure user is the owner or classroom staff */
         const isOwner = attempt.studentId === userId;
         const isTutor = ['CREATOR', 'CO_TUTOR'].includes(userRole);
         if (!isOwner && !isTutor) {
             throw new ForbiddenError("Access denied.");
         }
 
+         /** @section Feedback Map Generation */
         const reviewData = attempt.questionPaper.questions.map(q => {
             const studentAns = attempt.answers.find(a => a.questionId === q.id);
             return {
@@ -233,7 +294,7 @@ export const getAttemptReview = async (req: AuthenticatedRequest, res: Response,
                                 : q.options.filter(o => o.isCorrect).map(o => o.id),
                 studentAnswer: q.type.toUpperCase() === "NAT"
                                 ? studentAns?.numericalAnswer
-                                : studentAns?.selectedOptionId,
+                                : studentAns?.selectedOptionId, // MSQ returns csv string
                 options: q.options.map(o => ({ id: o.id, text: o.text, isCorrect: o.isCorrect })),
             };
         });

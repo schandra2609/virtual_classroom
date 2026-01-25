@@ -1,3 +1,10 @@
+/**
+ * @file user.controller.ts
+ * @module Controllers/User
+ * @description Controller logic for managing the authenticated user's profile, 
+ * security settings (passwords, OTPs), and document uploads.
+ * @author Sayan Chandra
+ */
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import bcrypt from "bcrypt";
@@ -6,7 +13,15 @@ import { prisma } from "../configs/database.config.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
 import { uploadBuffer } from "../services/storage.service.ts";
 
-export const getCurrentUser = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @function getCurrentUser
+ * @description Retrieves the full profile of the currently authenticated user from the request context.
+ * @param {AuthenticatedRequest} req - The request object populated by verifyToken middleware.
+ * @param {Response} res - Express response object.
+ * @param {NextFunction} next - Error propagation function.
+ * @returns {void}
+ */
+export const getCurrentUser = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
     try {
         res.status(200).json({
             success: true,
@@ -20,7 +35,15 @@ export const getCurrentUser = (req: AuthenticatedRequest, res: Response, next: N
     }
 };
 
-export const updateCurrentUser = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function updateCurrentUser
+ * @description Updates non-sensitive user metadata (fullName, profilePhotoUrl, etc.).
+ * Validates that at least one updateable field is provided.
+ * @param {AuthenticatedRequest} req - Request containing update payload in body.
+ * @returns {Promise<void>}
+ */
+export const updateCurrentUser = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { fullName, profilePhotoUrl, email } = req.body as Partial<{ fullName: string, profilePhotoUrl: string, email: string }>;
         if(![fullName, profilePhotoUrl, email].some((field) => field?.trim())) {
@@ -54,11 +77,20 @@ export const updateCurrentUser = async (req: AuthenticatedRequest, res: Response
     }
 };
 
-export const uploadProfilePhoto = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function uploadProfilePhoto
+ * @description Processes a multipart image upload, transfers it to the 'profiles/' 
+ * folder in MinIO, and updates the user's profilePhotoUrl reference in the database.
+ * @param {AuthenticatedRequest} req - Expects req.file (Multer).
+ * @returns {Promise<void>}
+ */
+export const uploadProfilePhoto = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         if (!req.file) throw new BadRequestError("No image file provided.");
         const userId = req.user?.id as string;
 
+        // Upload buffer to MinIO service
         const fileName = await uploadBuffer(
             req.file.buffer,
             req.file.originalname,
@@ -82,7 +114,15 @@ export const uploadProfilePhoto = async (req: AuthenticatedRequest, res: Respons
     }
 };
 
-export const uploadQualificationProof = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function uploadQualificationProof
+ * @description Handles Tutor-specific document uploads (e.g., certificates). 
+ * Uploads the file and sets the verification status to 'PENDING' for administrative review.
+ * @param {AuthenticatedRequest} req - Expects req.file (Multer).
+ * @returns {Promise<void>}
+ */
+export const uploadQualificationProof = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         if (!req.file) throw new BadRequestError("No document provided.");
 
@@ -111,7 +151,14 @@ export const uploadQualificationProof = async (req: AuthenticatedRequest, res: R
     }
 };
 
-export const changePassword = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function changePassword
+ * @description Securely updates the user password. Verifies the existing (old) 
+ * password before hashing and persisting the new password.
+ * @returns {Promise<void>}
+ */
+export const changePassword = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { oldPassword, newPassword } = req.body;
         if(!oldPassword?.trim() || !newPassword?.trim()) {
@@ -143,7 +190,14 @@ export const changePassword = async (req: AuthenticatedRequest, res: Response, n
     }
 };
 
-export const sendVerificationOtp = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function sendVerificationOtp
+ * @description Generates a 6-digit numeric OTP, hashes it for secure storage, 
+ * and sets a 15-minute expiration window.
+ * @returns {Promise<void>}
+ */
+export const sendVerificationOtp = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         await prisma.user.update({
@@ -154,7 +208,10 @@ export const sendVerificationOtp = async (req: AuthenticatedRequest, res: Respon
             },
         });
 
-        // TODO: send OTP via email service (to be implemented)
+        /** 
+         * @todo Integration Point
+         * Dispatch email with the raw 'otp' code using mailer.config.ts 
+         */
 
         res.status(200).json({
             success: true,
@@ -165,7 +222,13 @@ export const sendVerificationOtp = async (req: AuthenticatedRequest, res: Respon
     }
 };
 
-export const verifyEmail = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function verifyEmail
+ * @description Validates a submitted OTP. If valid and not expired, sets 
+ * the user as verified and grants a 12-month verification lifespan.
+ */
+export const verifyEmail = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { otp } = req.body;
         if(!otp?.trim()) {

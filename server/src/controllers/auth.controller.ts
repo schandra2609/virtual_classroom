@@ -1,3 +1,10 @@
+/**
+ * @file auth.controller.ts
+ * @module Controllers/Authentication
+ * @description Business logic for user authentication. Implements a secure
+ * dual-token system: short-lived Access Tokens for API calls and long-lived 
+ * Refresh Tokens (stored in HttpOnly cookies) for session persistence.
+ */
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import type { JwtPayload } from "jsonwebtoken";
@@ -11,7 +18,16 @@ import { dayjs } from "../configs/dayjs.config.ts";
 import { BadRequestError, ConflictError, NotFoundError, UnauthorizedError } from "../errors/handler.error.ts";
 import Helper from "../utils/Helper.ts";
 
-const generateTokens = async (user: Partial<User>) => {
+/**
+ * @async
+ * @function generateTokens
+ * @private
+ * @description Internal utility to generate a JWT pair and persist the refresh token in the DB.
+ * @param {Partial<User>} user - The user object containing id, email, and accountType.
+ * @returns {Promise<{accessToken: string, refreshToken: string}>}
+ * @throws {BadRequestError} If user ID is missing.
+ */
+const generateTokens = async (user: Partial<User>): Promise<{accessToken: string, refreshToken: string}> => {
     if (!user.id) {
         throw new BadRequestError("User ID is required to generate tokens");
     }
@@ -36,7 +52,14 @@ const generateTokens = async (user: Partial<User>) => {
     return { accessToken, refreshToken };
 }
 
-export const register = async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function register
+ * @description Creates a new user account (STUDENT or TUTOR).
+ * Validates email uniqueness and password strength before hashing.
+ * @returns {Promise<void>}
+ */
+export const register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { fullName, email, password, accountType } = req.body as { fullName: string, email: string, password: string, accountType: any };
         if(![fullName, email, password, accountType].every(field => field.trim())) {
@@ -81,7 +104,14 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     }
 };
 
-export const login = async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function login
+ * @description Authenticates user via email/password.
+ * Sets the Refresh Token in a 'strict' HttpOnly cookie for security.
+ * @returns {Promise<void>}
+ */
+export const login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { email, password } = req.body as { email: string, password: string };
         if(![email, password].every(field => field.trim())) {
@@ -121,7 +151,13 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     }
 };
 
-export const logout = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function logout
+ * @description Invalidate refresh token in database and clear client-side cookies.
+ * @returns {Promise<void>}
+ */
+export const logout = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         await prisma.user.update({
             where: { id: req.user?.id as string},
@@ -139,7 +175,15 @@ export const logout = async (req: AuthenticatedRequest, res: Response, next: Nex
     }
 };
 
-export const handleGoogleCallback = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function handleGoogleCallback
+ * @description Logic for the Google OAuth redirect.
+ * If user exists: Logs them in immediately.
+ * If user is new: Redirects to profile completion with a temporary setup token.
+ * @returns {Promise<void>}
+ */
+export const handleGoogleCallback = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const googleProfile = req.user as any;
         const email = googleProfile.emails[0].value as string;
@@ -156,15 +200,25 @@ export const handleGoogleCallback = async (req: AuthenticatedRequest, res: Respo
             res.cookie("refreshToken", refreshToken, cookieOptions)
                 .redirect(`${ENV_CONFIG.CORS_ORIGIN[0]}/dashboard/${existingUser.accountType.toLowerCase()}`);
         }
+
+        // New user path: sign a short-lived token to protect the profile completion route
         const setUpPayload = { email: email, fullName: googleProfile.displayName };
         const setupToken = jwt.sign(setUpPayload, ENV_CONFIG.REFRESH_TOKEN.SECRET as string, { expiresIn: '15m' });
+
         res.redirect(`${ENV_CONFIG.CORS_ORIGIN[0]}/auth/complete-profile?setupToken=${setupToken}`);
     } catch (error) {
         next(error);
     }
 };
 
-export const refreshAccessTokens = async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function refreshAccessTokens
+ * @description Validates the Refresh Token from cookies and issues a new Access Token.
+ * Implements 'Refresh Token Rotation' logic by updating the token in the DB.
+ * @returns {Promise<void>}
+ */
+export const refreshAccessTokens = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
         const incomingRefreshToken: string = req.cookies?.refreshToken;
         if (!incomingRefreshToken.trim()) {
@@ -196,7 +250,14 @@ export const refreshAccessTokens = async (req: Request, res: Response, next: Nex
     }
 };
 
-export const completeUserProfile = async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function completeUserProfile
+ * @description Finalizes registration for OAuth users by allowing them to select 
+ * their AccountType (STUDENT/TUTOR) and providing necessary credentials.
+ * @returns {Promise<void>}
+ */
+export const completeUserProfile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { setupToken, accountType, qualificationUrl } = req.body as { setupToken: string, accountType: any, qualificationUrl: string };
         if(![setupToken, accountType, qualificationUrl].every((field) => field.trim())) {
@@ -208,7 +269,7 @@ export const completeUserProfile = async (req: Request, res: Response, next: Nex
             data: {
                 email: decoded.email as string,
                 fullName: decoded.fullName as string,
-                password: await bcrypt.hash(randomBytes(20).toString('hex'), 10),
+                password: await bcrypt.hash(randomBytes(20).toString('hex'), 10),   // Random password for OAuth users
                 accountType: accountType,
                 isEmailVerified: true,
                 emailVerificationExpiry: dayjs().add(12, 'month').toDate(),

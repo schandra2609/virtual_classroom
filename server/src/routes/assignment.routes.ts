@@ -12,7 +12,7 @@ import { isClassroomStudent, isClassroomTutor } from "../middlewares/auth.middle
 import { upload } from "../middlewares/upload.middleware.ts";
 
 /**
- * @constant router
+ * @constant router 
  * @description Express router instance with 'mergeParams' enabled.
  * Enabling mergeParams is critical to capture ':classroomId' from the parent route.
  */

@@ -1,10 +1,29 @@
+/**
+ * @file qpaper.controller.ts
+ * @module Controllers/Classroom/Examinations
+ * @description Manages the lifecycle of examination papers. 
+ * Handles scheduling, temporal visibility (Live vs. Draft), and 
+ * strict data sanitization to prevent answer leaks to students.
+ * @author Sayan Chandra
+ */
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import { BadRequestError, NotFoundError } from "../errors/handler.error.ts";
 import { prisma } from "../configs/database.config.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
 
-export const getAllQuestionPapers = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function getAllQuestionPapers
+ * @description Retrieves a list of question papers within a classroom.
+ * **Security & Temporal Logic:**
+ * - **Tutors**: Can see all papers (including future/draft ones).
+ * - **Students**: Can only see papers where the 'liveAt' timestamp is in the past.
+ * @param {AuthenticatedRequest} req - Request containing 'classroomId' in params.
+ * @param {Response} res - Success response with filtered question papers metadata.
+ * @returns {Promise<void>}
+ */
+export const getAllQuestionPapers = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { classroomId } = req.params as { classroomId: string };
         const userRole = req.membership?.role as string;
@@ -13,7 +32,9 @@ export const getAllQuestionPapers = async (req: AuthenticatedRequest, res: Respo
         }
 
         const whereClause: any = { classroomId: classroomId };
+        /** @section Temporal Visibility Filter */
         if(userRole === "STUDENT") {
+            // Students cannot discover future papers via the API
             whereClause.liveAt = { lte: new Date() };
         }
 
@@ -38,7 +59,16 @@ export const getAllQuestionPapers = async (req: AuthenticatedRequest, res: Respo
     }
 };
 
-export const createQuestionPaper = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function createQuestionPaper
+ * @description Initializes a new exam paper. Sets the scheduling and duration.
+ * @param {AuthenticatedRequest} req - Body: { title, liveAt, duration }.
+ * @throws {BadRequestError} 400 - If liveAt is in the past or duration is invalid.
+ * @throws {NotFoundError} 404 - If the parent classroom is invalid (P2003).
+ * @returns {Promise<void>}
+ */
+export const createQuestionPaper = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { classroomId } = req.params as { classroomId: string };
         const creatorId = req.user?.id as string;
@@ -74,7 +104,18 @@ export const createQuestionPaper = async (req: AuthenticatedRequest, res: Respon
     }
 };
 
-export const getQuestionPaperById = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function getQuestionPaperById
+ * @description Retrieves a full question paper including questions and options.
+ * **CRITICAL SECURITY FEATURE: DATA SANITIZATION**
+ * - If the requester is a **STUDENT**, the controller strips 'isCorrect' flags 
+ *   from options and 'numericalCorrectAnswer' from NAT questions before sending 
+ *   the response. This prevents cheating via Browser DevTools/Network Tab.
+ * @param {AuthenticatedRequest} req - Request containing 'paperId' in params.
+ * @returns {Promise<void>}
+ */
+export const getQuestionPaperById = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { paperId } = req.params as { paperId: string };
         const userAccountType = req.user?.accountType as string;
@@ -94,10 +135,12 @@ export const getQuestionPaperById = async (req: AuthenticatedRequest, res: Respo
                                 {
                                     ...questionPaper,
                                     questions: questionPaper.questions.map((q) => {
+                                        // Strip NAT correct answer
                                         if(q.numericalCorrectAnswer !== null) {
                                             const { numericalCorrectAnswer, ...rest } = q;
                                             return rest;
                                         }
+                                        // Strip MCQ/MSQ correct flags
                                         return {
                                             ...q,
                                             options: q.options.map(({ isCorrect, ...option }) => option),
@@ -115,7 +158,13 @@ export const getQuestionPaperById = async (req: AuthenticatedRequest, res: Respo
     }
 };
 
-export const updateQuestionPaper = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function updateQuestionPaper
+ * @description Updates existing paper metadata. Supports partial updates.
+ * @returns {Promise<void>}
+ */
+export const updateQuestionPaper = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { paperId } = req.params as { paperId: string };
         const { title, liveAt, duration } = req.body as { title: string, liveAt: string, duration: string };
@@ -152,7 +201,13 @@ export const updateQuestionPaper = async (req: AuthenticatedRequest, res: Respon
     }
 };
 
-export const deleteQuestionPaper = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+/**
+ * @async
+ * @function deleteQuestionPaper
+ * @description Deletes a paper and all associated questions/options/attempts via cascade.
+ * @returns {Promise<void>}
+ */
+export const deleteQuestionPaper = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { paperId } = req.params as { paperId: string };
         if(!paperId?.trim()) {
