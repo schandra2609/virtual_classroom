@@ -13,7 +13,7 @@ router.use("/admin", verifyToken as any, authorize("ADMINISTRATOR") as any, admi
 router.use("/auth", authRouter);
 router.use("/users/me", verifyToken as any ,userRouter);
 router.use("/classrooms", verifyToken as any, classroomRouter);
-router.use("/invitations", verifyToken as any, invitationRouter);
+router.use("/invitations", verifyToken as any, authorize("TUTOR") as any, invitationRouter);
 
 router.route("/health")
     .get((_req: Request, res: Response) => {
