@@ -39,6 +39,6 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "server.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }
