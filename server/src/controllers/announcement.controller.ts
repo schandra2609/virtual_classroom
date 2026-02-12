@@ -8,9 +8,16 @@
  */
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
-import { BadRequestError, ForbiddenError, NotFoundError } from "../errors/handler.error.ts";
+import {
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from "../errors/handler.error.ts";
 import { prisma } from "../configs/database.config.ts";
 import { deleteFile, uploadBuffer } from "../services/storage.service.ts";
+import { notifyNewAnnouncement } from "../services/socket.service.ts";
+import { sendMaterialNotification } from "../services/email.service.ts";
+import { ENV_CONFIG } from "../configs/env.config.ts";
 
 /**
  * @async
@@ -22,30 +29,34 @@ import { deleteFile, uploadBuffer } from "../services/storage.service.ts";
  * @param {NextFunction} next - Error propagation.
  * @returns {Promise<void>}
  */
-export const getAnnouncements = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-    try {
-        const { classroomId } = req.params as { classroomId: string };
-        if(!classroomId.trim()) {
-            throw new BadRequestError("Classroom ID is required.");
-        }
-
-        const announcements = await prisma.announcement.findMany({
-            where: { classroomId: classroomId },
-            include: {
-                author: { select: { fullName: true, profilePhotoUrl: true } },
-                attachments: true,
-                _count: { select: { comments: true } },
-            },
-            orderBy: { createdAt: 'desc' },
-        });
-        res.status(200).json({
-            success: true,
-            data: announcements,
-            message: "Announcements retrieved successfully",
-        });
-    } catch (error) {
-        next(error);
+export const getAnnouncements = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { classroomId } = req.params as { classroomId: string };
+    if (!classroomId.trim()) {
+      throw new BadRequestError("Classroom ID is required.");
     }
+
+    const announcements = await prisma.announcement.findMany({
+      where: { classroomId: classroomId },
+      include: {
+        author: { select: { fullName: true, profilePhotoUrl: true } },
+        attachments: true,
+        _count: { select: { comments: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    res.status(200).json({
+      success: true,
+      data: announcements,
+      message: "Announcements retrieved successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 /**
@@ -61,67 +72,112 @@ export const getAnnouncements = async (req: AuthenticatedRequest, res: Response,
  * @param {AuthenticatedRequest} req - Request containing 'classroomId' in params and 'message' in body.
  * @returns {Promise<void>}
  */
-export const createAnnouncement = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-    try {
-        const { classroomId } = req.params as { classroomId: string };
-        const authorId = req.user?.id as string;
-        const { message } = req.body as { message: string };
+export const createAnnouncement = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { classroomId } = req.params as { classroomId: string };
+    const authorId = req.user?.id as string;
+    const { message } = req.body as { message: string };
 
-        /** @section Validation */
-        if (![classroomId, message].every((field) => field.trim())) {
-            throw new BadRequestError("Announcement message, classroom ID are required.");
-        }
-
-        const files = req.files as Express.Multer.File[];
-
-         /** @section Atomic Transaction */
-        const announcement: any = await prisma.$transaction(async (txn) => {
-            // Step 1: Create Announcement
-            const newAnnouncement = await txn.announcement.create({
-                data: {
-                    message: message?.trim(),
-                    classroomId: classroomId.trim(),
-                    authorId: authorId.trim(),
-                }
-            });
-
-            // Step 2: Handle File Uploads (if any)
-            if(files && files.length > 0) {
-                const attachmentData = await Promise.all(
-                    files.map(async (file) => {
-                        // Stream buffer to MinIO under the classroom's dedicated directory
-                        const storedPath = await uploadBuffer(
-                            file.buffer,
-                            file.originalname,
-                            file.mimetype,
-                            `classrooms/${classroomId}/attachments/`
-                        );
-                        return {
-                            url: storedPath,
-                            fileName: file.originalname,
-                            fileType: file.mimetype,
-                            announcementId: newAnnouncement.id,
-                        };
-                    })
-                );
-                // Batch create references in PostgreSQL
-                await txn.attachment.createMany({ data: attachmentData });
-            }
-
-            return txn.announcement.findUnique({
-                where: { id: announcement.id },
-                include: { attachments: true, author: { select: { fullName: true } } },
-            });
-        });
-
-        res.status(201).json({
-            success: true,
-            data: announcement,
-            message: "Announcement created successfully",
-        });
-    } catch (error) {
-        next(error);
+    /** @section Validation */
+    if (![classroomId, message].every((field) => field.trim())) {
+      throw new BadRequestError(
+        "Announcement message, classroom ID are required.",
+      );
     }
+
+    const files = req.files as Express.Multer.File[];
+
+    /** @section Atomic Transaction */
+    const announcement: any = await prisma.$transaction(async (txn) => {
+      // Step 1: Create Announcement
+      const newAnnouncement = await txn.announcement.create({
+        data: {
+          message: message?.trim(),
+          classroomId: classroomId.trim(),
+          authorId: authorId.trim(),
+        },
+      });
+
+      // Step 2: Handle File Uploads (if any)
+      if (files && files.length > 0) {
+        const attachmentData = await Promise.all(
+          files.map(async (file) => {
+            // Stream buffer to MinIO under the classroom's dedicated directory
+            const storedPath = await uploadBuffer(
+              file.buffer,
+              file.originalname,
+              file.mimetype,
+              `classrooms/${classroomId}/attachments/`,
+            );
+            return {
+              url: storedPath,
+              fileName: file.originalname,
+              fileType: file.mimetype,
+              announcementId: newAnnouncement.id,
+            };
+          }),
+        );
+        // Batch create references in PostgreSQL
+        await txn.attachment.createMany({ data: attachmentData });
+      }
+
+      return txn.announcement.findUnique({
+        where: { id: newAnnouncement.id },
+        include: {
+          attachments: true,
+          author: { select: { fullName: true } },
+          classroom: { select: { name: true } },
+        },
+      });
+    });
+
+    res.status(201).json({
+      success: true,
+      data: announcement,
+      message: "Announcement created successfully",
+    });
+
+    /** @section Post-Success Notifications (Async) */
+    try {
+      // 1. Fetch Classroom Members (Students and Tutors)
+      const members = await prisma.classroomMember.findMany({
+        where: { classroomId: classroomId, membershipStatus: "APPROVED" },
+        include: { user: { select: { fullName: true, email: true } } },
+      });
+
+      const recipients = members
+        .filter((m) => m.userId !== authorId) // Don't notify the author
+        .map((m) => ({ name: m.user.fullName, email: m.user.email }));
+
+      // 2. Broadcast via Socket.io
+      notifyNewAnnouncement(classroomId, announcement);
+
+      // 3. Send Email Notifications
+      if (recipients.length > 0) {
+        const dashboardUrl = `${ENV_CONFIG.CORS_ORIGIN[0]}/dashboard/classroom/${classroomId}`;
+        await sendMaterialNotification(
+          recipients,
+          "Announcement",
+          message.length > 50 ? `${message.substring(0, 50)}...` : message,
+          announcement.classroom.name,
+          dashboardUrl,
+        );
+      }
+    } catch (notifyError) {
+      // We don't call next(notifyError) here because the response is already sent.
+      // Notifications are non-critical "best effort" operations.
+      console.error(
+        "Failed to process notifications for announcement:",
+        notifyError,
+      );
+    }
+  } catch (error) {
+    next(error);
+  }
 };
 
 /**
@@ -138,35 +194,42 @@ export const createAnnouncement = async (req: AuthenticatedRequest, res: Respons
  * @throws {ForbiddenError} 403 - If the user lacks sufficient permissions.
  * @returns {Promise<void>}
  */
-export const deleteAnnouncement = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-    try {
-        const { announcementId } = req.params as { announcementId: string };
-        const userId = req.user?.id as string;
-        if (!announcementId?.trim()) {
-            throw new BadRequestError("Announcement ID is required.");
-        }
-
-        const announcement = await prisma.announcement.findUnique({
-            where: { id: announcementId },
-            include: { attachments: true },
-        });
-        if (!announcement) throw new NotFoundError("Announcement not found.");
-
-        const isAuthor = announcement.authorId === userId;
-        const isCreator = req.membership?.role === "CREATOR";
-        if (!isCreator && !isAuthor) throw new ForbiddenError("You can only delete your own announcements.");
-
-        if (announcement.attachments.length > 0) {
-            await Promise.all(announcement.attachments.map(att => deleteFile(att.url)));
-        }
-
-        await prisma.announcement.delete({ where: { id: announcementId } });
-
-        res.status(200).json({
-            success: true,
-            message: "Announcement deleted successfully.",
-        });
-    } catch (error) {
-        next(error);
+export const deleteAnnouncement = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { announcementId } = req.params as { announcementId: string };
+    const userId = req.user?.id as string;
+    if (!announcementId?.trim()) {
+      throw new BadRequestError("Announcement ID is required.");
     }
+
+    const announcement = await prisma.announcement.findUnique({
+      where: { id: announcementId },
+      include: { attachments: true },
+    });
+    if (!announcement) throw new NotFoundError("Announcement not found.");
+
+    const isAuthor = announcement.authorId === userId;
+    const isCreator = req.membership?.role === "CREATOR";
+    if (!isCreator && !isAuthor)
+      throw new ForbiddenError("You can only delete your own announcements.");
+
+    if (announcement.attachments.length > 0) {
+      await Promise.all(
+        announcement.attachments.map((att) => deleteFile(att.url)),
+      );
+    }
+
+    await prisma.announcement.delete({ where: { id: announcementId } });
+
+    res.status(200).json({
+      success: true,
+      message: "Announcement deleted successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
 };
