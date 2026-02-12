@@ -2,7 +2,7 @@
  * @file auth.controller.ts
  * @module Controllers/Authentication
  * @description Business logic for user authentication. Implements a secure
- * dual-token system: short-lived Access Tokens for API calls and long-lived 
+ * dual-token system: short-lived Access Tokens for API calls and long-lived
  * Refresh Tokens (stored in HttpOnly cookies) for session persistence.
  */
 import type { NextFunction, Request, Response } from "express";
@@ -15,8 +15,14 @@ import type { User } from "../../generated/prisma/client.ts";
 import { ENV_CONFIG } from "../configs/env.config.ts";
 import { prisma } from "../configs/database.config.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
-import { BadRequestError, ConflictError, NotFoundError, UnauthorizedError } from "../errors/handler.error.ts";
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  UnauthorizedError,
+} from "../errors/handler.error.ts";
 import Helper from "../utils/Helper.ts";
+import { sendWelcomeEmail } from "../services/email.service.ts";
 
 /**
  * @async
@@ -27,7 +33,7 @@ import Helper from "../utils/Helper.ts";
  * @returns {Promise<{accessToken: string, refreshToken: string}>}
  * @throws {BadRequestError} If user ID is missing.
  */
-const generateTokens = async (user: Partial<User>): Promise<{accessToken: string, refreshToken: string}> => {
+const generateTokens = async (user: Partial<User>): Promise<{ accessToken: string; refreshToken: string }> => {
     if (!user.id) {
         throw new BadRequestError("User ID is required to generate tokens");
     }
@@ -50,7 +56,7 @@ const generateTokens = async (user: Partial<User>): Promise<{accessToken: string
     });
 
     return { accessToken, refreshToken };
-}
+};
 
 /**
  * @async
@@ -61,19 +67,26 @@ const generateTokens = async (user: Partial<User>): Promise<{accessToken: string
  */
 export const register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-        const { fullName, email, password, accountType } = req.body as { fullName: string, email: string, password: string, accountType: any };
-        if(![fullName, email, password, accountType].every(field => field.trim())) {
+        const { fullName, email, password, accountType } = req.body as {
+            fullName: string;
+            email: string;
+            password: string;
+            accountType: any;
+        };
+        if (![fullName, email, password, accountType].every((field) => field.trim())) {
             throw new BadRequestError("Full name, email, password and account type are required");
         }
-        if(!["STUDENT", "TUTOR"].includes(accountType)) {
+        if (!["STUDENT", "TUTOR"].includes(accountType)) {
             throw new BadRequestError("Invalid account type");
         }
 
-        const existingUser = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-        if(existingUser) {
+        const existingUser = await prisma.user.findUnique({
+            where: { email: email.toLowerCase() },
+        });
+        if (existingUser) {
             throw new ConflictError("Email is already registered");
         }
-        if(!Helper.isPasswordStrong(password)) {
+        if (!Helper.isPasswordStrong(password)) {
             throw new BadRequestError("Password is not strong enough");
         }
 
@@ -99,6 +112,10 @@ export const register = async (req: Request, res: Response, next: NextFunction):
             data: newUser,
             message: "User registered successfully",
         });
+
+        // Send Welcome Email
+        const dashboardUrl = `${ENV_CONFIG.CORS_ORIGIN[0]}/dashboard/${accountType.toLowerCase()}`;
+        await sendWelcomeEmail({ name: fullName, email: email }, dashboardUrl);
     } catch (error) {
         next(error);
     }
@@ -113,30 +130,39 @@ export const register = async (req: Request, res: Response, next: NextFunction):
  */
 export const login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-        const { email, password } = req.body as { email: string, password: string };
-        if(![email, password].every(field => field.trim())) {
+        const { email, password } = req.body as { email: string; password: string };
+        if (![email, password].every((field) => field.trim())) {
             throw new BadRequestError("Email and password are required");
         }
 
-        const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-        if(!user) {
+        const user = await prisma.user.findUnique({
+            where: { email: email.toLowerCase() },
+        });
+        if (!user) {
             throw new NotFoundError("User not found for this email");
         }
 
-        const isPasswordCorrect = await bcrypt.compare(password, user.password as string);
-        if(!isPasswordCorrect) {
+        const isPasswordCorrect = await bcrypt.compare(
+            password,
+            user.password as string,
+        );
+        if (!isPasswordCorrect) {
             throw new UnauthorizedError("Invalid credentials.");
         }
 
-        const { accessToken, refreshToken } = await generateTokens(user) as { accessToken: string, refreshToken: string };
+        const { accessToken, refreshToken } = (await generateTokens(user)) as {
+            accessToken: string;
+            refreshToken: string;
+        };
         const cookieOptions = {
             httpOnly: true as boolean,
             secure: (ENV_CONFIG.NODE_ENV === "production") as boolean,
             sameSite: "strict" as const,
-        }
+        };
 
         const { password: _, refreshToken: __, ...userWithoutSecrets } = user;
-        res.status(200)
+        res
+            .status(200)
             .cookie("refreshToken", refreshToken, cookieOptions)
             .json({
                 success: true,
@@ -160,16 +186,14 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
 export const logout = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         await prisma.user.update({
-            where: { id: req.user?.id as string},
+            where: { id: req.user?.id as string },
             data: { refreshToken: null },
         });
 
-        res.status(200)
-            .clearCookie("refreshToken")
-            .json({
-                success: true,
-                message: "User logged out successfully",
-            });
+        res.status(200).clearCookie("refreshToken").json({
+            success: true,
+            message: "User logged out successfully",
+        });
     } catch (error) {
         next(error);
     }
@@ -188,24 +212,33 @@ export const handleGoogleCallback = async (req: AuthenticatedRequest, res: Respo
         const googleProfile = req.user as any;
         const email = googleProfile.emails[0].value as string;
 
-        const existingUser = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-        if(existingUser) {
+        const existingUser = await prisma.user.findUnique({
+            where: { email: email.toLowerCase() },
+        });
+        if (existingUser) {
             const { accessToken, refreshToken } = await generateTokens(existingUser);
             const cookieOptions = {
                 httpOnly: true,
                 secure: (ENV_CONFIG.NODE_ENV === "production") as boolean,
                 sameSite: "strict" as const,
-            }
+            };
 
-            res.cookie("refreshToken", refreshToken, cookieOptions)
-                .redirect(`${ENV_CONFIG.CORS_ORIGIN[0]}/dashboard/${existingUser.accountType.toLowerCase()}`);
+            res.cookie("refreshToken", refreshToken, cookieOptions).redirect(
+                `${ENV_CONFIG.CORS_ORIGIN[0]}/dashboard/${existingUser.accountType.toLowerCase()}`,
+            );
         }
 
         // New user path: sign a short-lived token to protect the profile completion route
         const setUpPayload = { email: email, fullName: googleProfile.displayName };
-        const setupToken = jwt.sign(setUpPayload, ENV_CONFIG.REFRESH_TOKEN.SECRET as string, { expiresIn: '15m' });
+        const setupToken = jwt.sign(
+            setUpPayload,
+            ENV_CONFIG.REFRESH_TOKEN.SECRET as string,
+            { expiresIn: "15m" },
+        );
 
-        res.redirect(`${ENV_CONFIG.CORS_ORIGIN[0]}/auth/complete-profile?setupToken=${setupToken}`);
+        res.redirect(
+            `${ENV_CONFIG.CORS_ORIGIN[0]}/auth/complete-profile?setupToken=${setupToken}`,
+        );
     } catch (error) {
         next(error);
     }
@@ -225,20 +258,27 @@ export const refreshAccessTokens = async (req: Request, res: Response, next: Nex
             throw new UnauthorizedError("No refresh token provided.");
         }
 
-        const decoded = jwt.verify(incomingRefreshToken, ENV_CONFIG.REFRESH_TOKEN.SECRET) as JwtPayload;
+        const decoded = jwt.verify(
+            incomingRefreshToken,
+            ENV_CONFIG.REFRESH_TOKEN.SECRET,
+        ) as JwtPayload;
         const user = await prisma.user.findUnique({ where: { id: decoded.id } });
         if (!user || user.refreshToken !== incomingRefreshToken) {
             throw new UnauthorizedError("Invalid or expired refresh token.");
         }
 
-        const { accessToken, refreshToken } = await generateTokens(user) as { accessToken: string, refreshToken: string };
+        const { accessToken, refreshToken } = (await generateTokens(user)) as {
+            accessToken: string;
+            refreshToken: string;
+        };
         const cookieOptions = {
             httpOnly: true,
             secure: (ENV_CONFIG.NODE_ENV === "production") as boolean,
             sameSite: "strict" as const,
         };
 
-        res.status(200)
+        res
+            .status(200)
             .cookie("refreshToken", refreshToken, cookieOptions)
             .json({
                 success: true,
@@ -253,43 +293,61 @@ export const refreshAccessTokens = async (req: Request, res: Response, next: Nex
 /**
  * @async
  * @function completeUserProfile
- * @description Finalizes registration for OAuth users by allowing them to select 
+ * @description Finalizes registration for OAuth users by allowing them to select
  * their AccountType (STUDENT/TUTOR) and providing necessary credentials.
  * @returns {Promise<void>}
  */
 export const completeUserProfile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-        const { setupToken, accountType, qualificationUrl } = req.body as { setupToken: string, accountType: any, qualificationUrl: string };
-        if(![setupToken, accountType, qualificationUrl].every((field) => field.trim())) {
+        const { setupToken, accountType, qualificationUrl } = req.body as {
+            setupToken: string;
+            accountType: any;
+            qualificationUrl: string;
+        };
+        if (![setupToken, accountType, qualificationUrl].every((field) => field.trim())) {
             throw new BadRequestError("Setup token, account type, qualification URL are required.");
         }
 
-        const decoded = jwt.verify(setupToken, ENV_CONFIG.REFRESH_TOKEN.SECRET) as JwtPayload;
+        const decoded = jwt.verify(
+            setupToken,
+            ENV_CONFIG.REFRESH_TOKEN.SECRET,
+        ) as JwtPayload;
         const user = await prisma.user.create({
             data: {
                 email: decoded.email as string,
                 fullName: decoded.fullName as string,
-                password: await bcrypt.hash(randomBytes(20).toString('hex'), 10),   // Random password for OAuth users
+                password: await bcrypt.hash(randomBytes(20).toString("hex"), 10), // Random password for OAuth users
                 accountType: accountType,
                 isEmailVerified: true,
-                emailVerificationExpiry: dayjs().add(12, 'month').toDate(),
+                emailVerificationExpiry: dayjs().add(12, "month").toDate(),
                 tutorQualificationUrl: accountType === "TUTOR" ? qualificationUrl : null,
-            }
+            },
         });
-        const { accessToken, refreshToken } = await generateTokens(user) as { accessToken: string, refreshToken: string };
+        const { accessToken, refreshToken } = (await generateTokens(user)) as {
+            accessToken: string;
+            refreshToken: string;
+        };
         const cookieOptions = {
             httpOnly: true,
             secure: (ENV_CONFIG.NODE_ENV === "production") as boolean,
             sameSite: "strict" as const,
         };
         const { password: _, refreshToken: __, ...userWithoutSecrets } = user;
-        res.status(201)
+        res
+            .status(201)
             .cookie("refreshToken", refreshToken, cookieOptions)
             .json({
                 success: true,
                 data: { user: userWithoutSecrets, accessToken: accessToken },
                 message: "User profile completed and logged in successfully",
             });
+
+        // Send Welcome Email
+        const dashboardUrl = `${ENV_CONFIG.CORS_ORIGIN[0]}/dashboard/${accountType.toLowerCase()}`;
+        await sendWelcomeEmail(
+            { name: decoded.fullName, email: decoded.email },
+            dashboardUrl,
+        );
     } catch (error) {
         next(error);
     }
