@@ -9,7 +9,7 @@
     "lib": ["ESNext"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "types": ["node"],
+    "types": ["node", "jest"],
 
     /* Interop & Safety */
     "esModuleInterop": true,
@@ -39,6 +39,6 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
   },
-  "include": ["src/**/*", "server.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "include": ["src/**/*", "server.ts", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

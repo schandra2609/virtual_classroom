@@ -8,6 +8,7 @@
  */
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { ENV_CONFIG } from "../configs/env.config.ts";
 
 /**
@@ -18,6 +19,9 @@ interface User {
   name: string;
   email: string;
 }
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * @class Email
@@ -52,7 +56,7 @@ export default class Email {
    * @returns {string} The raw HTML template string.
    */
   private _loadTemplate(): string {
-    const templatePath = path.resolve(process.cwd(), "./template.html");
+    const templatePath = path.resolve(__dirname, "./template.html");
     return fs.readFileSync(templatePath, "utf-8");
   }
 

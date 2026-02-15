@@ -1,8 +1,8 @@
 /**
  * @file app.ts
  * @module Core/Application
- * @description The main Express application entry point. 
- * This file configures the middleware pipeline, security layers, 
+ * @description The main Express application entry point.
+ * This file configures the middleware pipeline, security layers,
  * request parsing, and routing architecture for the Virtual Classroom API.
  * @author Sayan Chandra
  */
@@ -27,12 +27,12 @@ const app: Application = express();
 
 /**
  * @section Network Security
- * @description Configures proxy trust settings. 
+ * @description Configures proxy trust settings.
  * 'trust proxy' is essential when the app is behind a load balancer (like Nginx, Vercel, or AWS).
  * Setting it to '1' trusts the first hop (the immediate proxy).
  */
-if(ENV_CONFIG.NODE_ENV === "production") {
-    app.set('trust proxy', 1);
+if (ENV_CONFIG.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
 }
 
 /**
@@ -50,10 +50,22 @@ app.use(helmet());
  * Permits the frontend (Vite/React) to communicate with this API.
  * 'credentials: true' is mandatory for the browser to send/receive HttpOnly cookies (Refresh Tokens).
  */
-app.use(cors({
-    origin: ENV_CONFIG.CORS_ORIGIN,
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || ENV_CONFIG.CORS_ORIGIN.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.error(`[CORS] Rejected origin: ${origin}`);
+        console.info(
+          `[CORS] Allowed origins: ${ENV_CONFIG.CORS_ORIGIN.join(", ")}`,
+        );
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
-}));
+  }),
+);
 
 /**
  * @section Request Parsers
@@ -70,7 +82,7 @@ app.use(express.json({ limit: "16kb" }));
  * @description Built-in middleware to parse URL-encoded bodies (standard HTML forms).
  * 'extended: true' allows for parsing of nested objects.
  */
-app.use(express.urlencoded({ extended: true, limit: '16kb' }));
+app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 
 /**
  * @description Middleware to parse the Cookie header and populate req.cookies.
@@ -82,18 +94,18 @@ app.use(cookieParser());
  * @description Serves static assets from the 'public' directory.
  * Useful for robots.txt or default placeholder images.
  */
-app.use(express.static('public'));
+app.use(express.static("public"));
 
 /**
  * @section Logging & Authentication
  */
 
 /**
- * @description HTTP request logger middleware. 
+ * @description HTTP request logger middleware.
  * 'dev' provides concise, colored output for development debugging.
  */
 if (ENV_CONFIG.NODE_ENV === "development") {
-    app.use(morgan('dev'));
+  app.use(morgan("dev"));
 }
 
 /**
@@ -111,7 +123,7 @@ app.use(`${ENV_CONFIG.API_V}`, rootRouter);
 
 /**
  * @section Error Handling Layer
- * @description Catch-all global error handler. 
+ * @description Catch-all global error handler.
  * Processes all errors passed via next(err) and returns standardized JSON responses.
  * MUST be the final middleware in the pipeline.
  */

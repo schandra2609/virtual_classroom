@@ -148,9 +148,7 @@ export const submitSolution = async (
     if (!assignmentId?.trim())
       throw new BadRequestError("Assignment ID is required.");
     if (!files || files.length === 0)
-      throw new BadRequestError(
-        "At least one file must be uploaded as a solution.",
-      );
+      throw new BadRequestError("At least one file must be uploaded as a solution.");
 
     // Fetch assignment to verify existence and check deadline
     const assignment = await prisma.assignment.findUnique({
@@ -160,9 +158,7 @@ export const submitSolution = async (
       throw new NotFoundError("The specified assignment does not exist.");
 
     if (dayjs().isAfter(dayjs(assignment.deadline))) {
-      throw new ForbiddenError(
-        "Submission failed: The deadline for this assignment has passed.",
-      );
+      throw new ForbiddenError("Submission failed: The deadline for this assignment has passed.");
     }
 
     const submission = await prisma.$transaction(async (txn) => {

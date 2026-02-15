@@ -87,7 +87,7 @@ export const createClassroom = async (req: AuthenticatedRequest, res: Response, 
     // Generate a unique joining code
     let joiningCode: string;
     let isUnique = false;
-    while (isUnique) {
+    while (!isUnique) {
       joiningCode = Helper.generateRandomCode(8);
       const existingClassroom = await prisma.classroom.findUnique({
         where: { joiningCode: joiningCode },

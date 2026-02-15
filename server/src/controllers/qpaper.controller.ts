@@ -11,6 +11,8 @@ import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import { BadRequestError, NotFoundError } from "../errors/handler.error.ts";
 import { prisma } from "../configs/database.config.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
+import { notifyTestStatusChange } from "../services/socket.service.ts";
+import Helper from "../utils/Helper.ts";
 
 /**
  * @async
@@ -89,6 +91,7 @@ export const createQuestionPaper = async (req: AuthenticatedRequest, res: Respon
                 duration: parseInt(duration, 10),
                 classroomId: classroomId,
                 creatorId: creatorId,
+                status: "SCHEDULED",
             },
         });
         res.status(201).json({
@@ -224,3 +227,107 @@ export const deleteQuestionPaper = async (req: AuthenticatedRequest, res: Respon
         next(error);
     }
 };
+
+/**
+ * @async
+ * @function changePaperStatus
+ * @description Controls the lifecycle of the test (GO LIVE, PAUSE, RESUME, CANCEL).
+ * Triggers socket events to update client-side UI immediately.
+ */
+export const changePaperStatus = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { paperId } = req.params as { paperId: string };
+        const { status } = req.body as { status: string };
+        
+        // Validate Status Enum
+        const validStatuses = ["LIVE", "PAUSED", "CANCELLED", "COMPLETED"];
+        if (!validStatuses.includes(status.toUpperCase())) {
+            throw new BadRequestError("Invalid status.");
+        }
+
+        // Fetch paper to get classroomId for Socket broadcast
+        const paper = await prisma.questionPaper.findUnique({ where: { id: paperId } });
+        if (!paper) throw new NotFoundError("Paper not found");
+
+        const now = new Date();
+        const dataToUpdate: any = { status: status };
+
+        // --- PAUSE LOGIC ---
+        if (status === "PAUSED" && paper.status === "LIVE") {
+            // Start tracking the pause duration
+            dataToUpdate.lastPausedAt = now;
+        }
+
+        // --- RESUME LOGIC (PAUSED -> LIVE) ---
+        if (status === "LIVE" && paper.status === "PAUSED" && paper.lastPausedAt) {
+            // Calculate how long we were paused (in milliseconds)
+            const pauseDuration = now.getTime() - new Date(paper.lastPausedAt).getTime();
+            dataToUpdate.pauseTime = { increment: pauseDuration };
+            dataToUpdate.lastPausedAt = null; // Reset pause tracker
+        }
+
+        const updatedPaper = await prisma.questionPaper.update({
+            where: { id: paperId },
+            data: dataToUpdate,
+        });
+
+        // Broadcast to students
+        notifyTestStatusChange(paper.classroomId, paperId, status.toUpperCase());
+
+        res.status(200).json({
+            success: true,
+            data: {
+                status: updatedPaper.status,
+                adjustedDeadline: Helper.calculateDeadline(updatedPaper)
+            },
+            message: `Test status updated to ${status.toUpperCase()}`,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @async
+ * @function getTimerSync
+ * @description Called by Student Frontend every ~30 seconds.
+ * Returns the "True Server Time" remaining.
+ */
+export const getTimerSync = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { paperId } = req.params as { paperId: string };
+        
+        const paper = await prisma.questionPaper.findUnique({ 
+            where: { id: paperId },
+            select: { liveAt: true, duration: true, pauseTime: true, status: true, lastPausedAt: true }
+        });
+        
+        if(!paper) throw new NotFoundError("Paper not found");
+
+        const deadline = Helper.calculateDeadline(paper);
+        const now = new Date();
+        
+        /** If currently paused, the remaining time is frozen at the moment of pause */
+        let remainingMillis = 0;
+
+        if (paper.status === "PAUSED" && paper.lastPausedAt) {
+            /** Deadline is essentially frozen relative to when it was paused */
+            const effectiveNow = paper.lastPausedAt; 
+            remainingMillis = deadline.getTime() - effectiveNow.getTime();
+        } else {
+            remainingMillis = deadline.getTime() - now.getTime();
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                status: paper.status,
+                remainingSeconds: Math.max(0, Math.floor(remainingMillis / 1000)),
+                serverTime: now, /** Send server time to sync clocks */
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+}

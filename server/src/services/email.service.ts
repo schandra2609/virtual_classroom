@@ -40,6 +40,12 @@ interface EmailOptions {
  * @returns {Promise<void>} Resolves when the email is sent, or logs an error if failed.
  */
 const sendEmail = async (options: EmailOptions): Promise<void> => {
+  if (ENV_CONFIG.NODE_ENV === "test") {
+    Logger.debug(
+      `[TEST] Skipping email to ${options.to} (subject: ${options.subject})`,
+    );
+    return;
+  }
   try {
     const mailOptions = {
       from: ENV_CONFIG.MAILER.USER, // Ensuring we use the configured sender

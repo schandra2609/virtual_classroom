@@ -59,8 +59,8 @@ router.route("/:assignmentId")
  */
 router.route("/:assignmentId/submit")
     /** 
-     * @route POST /submit 
-     * @description Allows a student to upload their solution. 
+     * @route POST /submit
+     * @description Allows a student to upload their solution.
      * Enforces 'STUDENT' role and multipart file limit (Max 3 files).
      */
     .post(

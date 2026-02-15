@@ -129,8 +129,12 @@ export const approveTutor = async (req: AuthenticatedRequest, res: Response, nex
 export const rejectTutor = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { tutorId } = req.params as { tutorId: string };
+        const { reason } = req.body as { reason: string };
         if(!tutorId.trim()) {
             throw new BadRequestError("Tutor ID is required.");
+        }
+        if(!reason?.trim()) {
+            throw new BadRequestError("A rejection reason is required.");
         }
 
         const tutor = await prisma.user.findFirst({
@@ -145,10 +149,13 @@ export const rejectTutor = async (req: AuthenticatedRequest, res: Response, next
             where: { id: tutorId as string, accountType: "TUTOR" },
             data: {
                 tutorVerificationStatus: "REJECTED",
+                tutorRejectionReason: reason.trim(),
                 tutorStatusUpdatedAt: new Date(),
             },
             select: { id: true, fullName: true, email: true, tutorVerificationStatus: true },
         });
+
+        // TODO: Send email to the tutor for rejection
 
         res.status(200).json({
             success: true,

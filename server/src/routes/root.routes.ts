@@ -48,7 +48,7 @@ router.use("/users/me", verifyToken as any ,userRouter);
  * @route /api/v1/classrooms
  * @access Private (Authenticated Users)
  */
-router.use("/classrooms", verifyToken as any, classroomRouter);
+router.use("/classroom", verifyToken as any, classroomRouter);
 
 /** 
  * @route /api/v1/invitations

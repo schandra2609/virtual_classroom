@@ -10,7 +10,7 @@ import { Router } from "express";
 import questionRouter from "./question.routes.ts";
 import testAttemptRouter from "./testattempt.routes.ts";
 import * as qpaperController from "../controllers/qpaper.controller.ts";
-import { isClassroomTutor } from "../middlewares/auth.middleware.ts";
+import { isClassroomStudent, isClassroomTutor } from "../middlewares/auth.middleware.ts";
 
 /**
  * @constant router
@@ -55,6 +55,23 @@ router.route("/:paperId")
      * @description Permanently remove the paper and related records. Access: Tutor only.
      */
     .delete(isClassroomTutor as any, qpaperController.deleteQuestionPaper as any);
+
+/** 
+ * @route GET /:paperId/timer
+ * @description Sync endpoint for students to get the exact server-side remaining time.
+ * Frontend polls this.
+ */
+router.route("/:paperId/timer")
+    .get(isClassroomStudent as any, qpaperController.getTimerSync as any);
+
+/** 
+ * @route PATCH /:paperId/status 
+ * @description Change status (LIVE, PAUSE, CANCEL). 
+ * Access: Tutor only.
+ */
+router.route("/:paperId/status")
+    .patch(isClassroomTutor as any, qpaperController.changePaperStatus as any);
+
 
 /**
  * @section Sub-Resource Mounting

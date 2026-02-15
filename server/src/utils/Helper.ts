@@ -72,4 +72,10 @@ export default class Helper {
         const seconds = String(date.getSeconds()).padStart(2, '0');
         return `${this.formatDate(date)}T${hours}:${minutes}:${seconds}`;
     };
+
+    static calculateDeadline = (paper: any) => {
+        const start = new Date(paper.liveAt).getTime();
+        const durationMillis = paper.duration * 60 * 1000;
+        return new Date(start + durationMillis + paper.pauseTime);
+    }
 }

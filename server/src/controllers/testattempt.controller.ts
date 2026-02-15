@@ -29,7 +29,7 @@ export const startTestAttempt = async (req: AuthenticatedRequest, res: Response,
         const studentId = req.user?.id as string;
         
         /** @section Validation Fix */
-        if(paperId.trim()) {
+        if(!paperId?.trim()) {
             throw new BadRequestError("Paper ID is required.");
         }
 
@@ -38,29 +38,36 @@ export const startTestAttempt = async (req: AuthenticatedRequest, res: Response,
             throw new NotFoundError("Question paper not found.");
         }
 
+        /** @section STATUS CHECK (Server Side Gate) */
+        if (questionPaper.status === "SCHEDULED") {
+            throw new ForbiddenError("Test has not started yet.");
+        }
+        if (questionPaper.status === "PAUSED") {
+            throw new ForbiddenError("Test is currently paused by the instructor.");
+        }
+        if (questionPaper.status === "CANCELLED") {
+            throw new ForbiddenError("Test has been cancelled.");
+        }
+
         /** @section Temporal Logic */
         const now = dayjs();
-        const startTime = dayjs(questionPaper.liveAt);
-        const endTime = startTime.add(questionPaper.duration, 'minute');
-        const isLive = now.isAfter(startTime) && now.isBefore(endTime);
-        const attemptType = isLive ? "OFFICIAL" : "PRACTICE";
+        const liveAt = dayjs(questionPaper.liveAt);
+        const endTime = liveAt.add(questionPaper.duration, 'minute');
+        const isOfficialWindow = questionPaper.status === "LIVE" && now.isBefore(endTime);
+        const attemptType = isOfficialWindow ? "OFFICIAL" : "PRACTICE";
 
         /** @section Anti-Cheat: Official Attempt Enforcement */
         if(attemptType === "OFFICIAL") {
-            const existingOfficialAttempt = await prisma.testAttempt.findFirst({
+            const existing = await prisma.testAttempt.findFirst({
                 where: { studentId: studentId, questionPaperId: paperId, type: "OFFICIAL" },
             });
-            if(existingOfficialAttempt) {
+            if(existing) {
                 throw new ConflictError("You have already completed your OFFICIAL attempt for this test.");
             }
         }
 
         const newAttempt = await prisma.testAttempt.create({
-            data: {
-                type: attemptType,
-                studentId: studentId,
-                questionPaperId: paperId,
-            },
+            data: { type: attemptType, studentId, questionPaperId: paperId },
             include: { questionPaper: true },
         });
         res.status(201).json({
@@ -91,10 +98,36 @@ export const submitAnswer = async (req: AuthenticatedRequest, res: Response, nex
             throw new BadRequestError("Attempt ID, question ID are required fields.");
         }
 
-        const attempt = await prisma.testAttempt.findUnique({ where: { id: attemptId } });
+        const attempt = await prisma.testAttempt.findUnique({
+            where: { id: attemptId },
+            include: { questionPaper: true },
+        });
+
         if (!attempt || attempt.studentId !== studentId) {
             throw new NotFoundError("Attempt not found or access denied.");
         }
+
+        /** @section SERVER-SIDE TIMER & STATUS GUARD */
+        if (attempt.type === "OFFICIAL") {
+            const { status, liveAt, duration, pauseTime } = attempt.questionPaper;
+            
+            // 1. Check Manual Status
+            if (status.toUpperCase() === "PAUSED") throw new ForbiddenError("Submission blocked: Test is paused.");
+            if (status.toUpperCase() === "CANCELLED") throw new ForbiddenError("Submission blocked: Test cancelled.");
+            if (status.toUpperCase() === "COMPLETED") throw new ForbiddenError("Submission blocked: Test ended.");
+
+            // 2. Check Server Clock (Hard Deadline)
+            const now = new Date().getTime();
+            const start = new Date(liveAt).getTime();
+            const durationMillis = duration * 60 * 1000;
+            const adjustedDeadline = start + durationMillis + pauseTime;
+
+            if (now > (adjustedDeadline + 15000)) {
+                throw new ForbiddenError("Submission blocked: Time limit exceeded.");
+            }
+        }
+
+        /** @section STATUS CHECK (Server Side Gate) */
         if (attempt.submittedAt) {
             throw new BadRequestError("This test has already been submitted.");
         }
@@ -226,7 +259,7 @@ export const getMyAttemptsForPaper = async (req:AuthenticatedRequest, res: Respo
         const studentId = req.user?.id as string;
         
         /** @section Validation Fix */
-        if(paperId?.trim()) {
+        if(!paperId?.trim()) {
             throw new BadRequestError("Paper ID is required.");
         }
 

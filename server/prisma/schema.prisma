@@ -46,8 +46,15 @@ enum TestAttemptType {
   PRACTICE
 }
 
+enum QuestionPaperStatus {
+  SCHEDULED
+  LIVE
+  PAUSED
+  CANCELLED
+  COMPLETED
+}
+
 enum TutorVerificationStatus {
-  UNVERIFIED
   PENDING
   VERIFIED
   REJECTED
@@ -71,9 +78,10 @@ model User {
   verificationOtp           String?
   verificationOtpExpiry     DateTime?
 
-  tutorVerificationStatus   TutorVerificationStatus     @default(UNVERIFIED)
+  tutorVerificationStatus   TutorVerificationStatus     @default(PENDING)
   tutorStatusUpdatedAt      DateTime?
   tutorQualificationUrl     String?
+  tutorRejectionReason      String?
 
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -94,7 +102,7 @@ model Classroom {
   name        String
   subject     String
   batch       String
-  joiningCode String   @unique @default(cuid())
+  joiningCode String   @unique
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -146,6 +154,11 @@ model QuestionPaper {
   title     String
   liveAt    DateTime
   duration  Int
+  status    QuestionPaperStatus @default(SCHEDULED)
+
+  pauseTime       Int         @default(0)
+  lastPausedAt    DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -1,15 +1,19 @@
 /**
  * @file auth.middleware.ts
  * @module Middlewares/Authentication
- * @description Provides robust security layers for route protection. 
- * Includes JWT verification, Role-Based Access Control (RBAC), and 
+ * @description Provides robust security layers for route protection.
+ * Includes JWT verification, Role-Based Access Control (RBAC), and
  * Classroom-specific permission checks.
  */
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import type { JwtPayload } from "jsonwebtoken";
 import type { ClassroomMember, User } from "../../generated/prisma/client.ts";
-import { BadRequestError, ForbiddenError, UnauthorizedError } from "../errors/handler.error.ts";
+import {
+  BadRequestError,
+  ForbiddenError,
+  UnauthorizedError,
+} from "../errors/handler.error.ts";
 import { ENV_CONFIG } from "../configs/env.config.ts";
 import { prisma } from "../configs/database.config.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
@@ -17,20 +21,20 @@ import { dayjs } from "../configs/dayjs.config.ts";
 /**
  * @interface AuthenticatedRequest
  * @extends Request
- * @description Custom extension of the Express Request object to include 
+ * @description Custom extension of the Express Request object to include
  * properties populated by authentication and authorization middlewares.
  * @property {Partial<User>} [user] - The authenticated user's database record.
  * @property {ClassroomMember} [membership] - The membership details if the request is classroom-scoped.
  */
 export interface AuthenticatedRequest extends Request {
-    user?: Partial<User>;
-    membership?: ClassroomMember;
+  user?: Partial<User>;
+  membership?: ClassroomMember;
 }
 
 /**
  * @async
  * @function verifyToken
- * @description Primary authentication middleware. 
+ * @description Primary authentication middleware.
  * 1. Validates the 'Authorization: Bearer <token>' header.
  * 2. Decodes the JWT and retrieves the user from the database.
  * 3. Checks for email verification expiry and revokes status if necessary.
@@ -41,56 +45,72 @@ export interface AuthenticatedRequest extends Request {
  * @throws {UnauthorizedError} If token is missing, invalid, expired, or user doesn't exist.
  * @returns {Promise<void>}
  */
-export const verifyToken = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-    try {
-        const authHeader = req.headers.authorization?.trim();
-        if(!authHeader || !authHeader.startsWith('Bearer ')) {
-            throw new UnauthorizedError("Authorization header missing or malformed");
-        }
-
-        const token = authHeader.split(' ')[1];
-        if(!token) {
-            throw new UnauthorizedError("Token not provided");
-        }
-
-        const decoded = jwt.verify(token, ENV_CONFIG.ACCESS_TOKEN.SECRET) as JwtPayload;
-        const user = await prisma.user.findUnique({
-            where: { id: decoded.id },
-            select: {
-                id: true,
-                email: true,
-                fullName: true,
-                accountType: true,
-                isEmailVerified: true,
-                emailVerificationExpiry: true,
-            },
-        });
-        if(!user) {
-            throw new UnauthorizedError("User not found");
-        }
-
-        /**
-         * Business Logic: Verification Lifecycle
-         * Revokes 'isEmailVerified' status if the verification period has expired.
-         */
-        if(user.accountType !== "ADMINISTRATOR" && user.isEmailVerified && user.emailVerificationExpiry && dayjs().isAfter(user.emailVerificationExpiry) ) {
-            await prisma.user.update({
-                where: { id: user.id },
-                data: { isEmailVerified: false, emailVerificationExpiry: null },
-            });
-            user.isEmailVerified = false;
-            user.emailVerificationExpiry = null;
-        }
-
-        req.user = user;
-        next();
-    } catch (error: any) {
-        if(error.name === "TokenExpiredError" || error.name === "JsonWebTokenError") {
-            next(new UnauthorizedError("Invalid or expired token"));
-        } else {
-            next(error);
-        }
+export const verifyToken = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const authHeader = req.headers.authorization?.trim();
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      throw new UnauthorizedError("Authorization header missing or malformed");
     }
+
+    const token = authHeader.split(" ")[1];
+    if (!token) {
+      throw new UnauthorizedError("Token not provided");
+    }
+
+    const decoded = jwt.verify(
+      token,
+      ENV_CONFIG.ACCESS_TOKEN.SECRET,
+    ) as JwtPayload;
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        accountType: true,
+        isEmailVerified: true,
+        emailVerificationExpiry: true,
+        tutorVerificationStatus: true,
+      },
+    });
+    if (!user) {
+      throw new UnauthorizedError("User not found");
+    }
+
+    /**
+     * Business Logic: Verification Lifecycle
+     * Revokes 'isEmailVerified' status if the verification period has expired.
+     */
+    if (
+      user.accountType !== "ADMINISTRATOR" &&
+      user.isEmailVerified &&
+      user.emailVerificationExpiry &&
+      dayjs().isAfter(user.emailVerificationExpiry)
+    ) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { isEmailVerified: false, emailVerificationExpiry: null },
+      });
+      user.isEmailVerified = false;
+      user.emailVerificationExpiry = null;
+    }
+
+    req.user = user;
+    next();
+  } catch (error: any) {
+    if (
+      error.name === "TokenExpiredError" ||
+      error.name === "JsonWebTokenError"
+    ) {
+      next(new UnauthorizedError("Invalid or expired token"));
+    } else {
+      next(error);
+    }
+  }
 };
 
 /**
@@ -102,12 +122,20 @@ export const verifyToken = async (req: AuthenticatedRequest, res: Response, next
  * router.get("/any-admin-only-route", authorize("ADMINISTRATOR"), controller);
  */
 export const authorize = (...allowedAccountTypes: string[]) => {
-    return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-        if(!allowedAccountTypes.includes(req.user?.accountType as string)) {
-            return next(new ForbiddenError(`This action is restricted to ${allowedAccountTypes.join(" or ")} account(s) only`));
-        }
-        return next();
-    };
+  return (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): void => {
+    if (!allowedAccountTypes.includes(req.user?.accountType as string)) {
+      return next(
+        new ForbiddenError(
+          `This action is restricted to ${allowedAccountTypes.join(" or ")} account(s) only`,
+        ),
+      );
+    }
+    return next();
+  };
 };
 
 /**
@@ -119,34 +147,44 @@ export const authorize = (...allowedAccountTypes: string[]) => {
  * @returns {function} An asynchronous Express middleware function.
  */
 const checkClassroomRole = (...allowedClassroomRoles: string[]) => {
-    return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-        try {
-            const { classroomId } = req.params as { classroomId: string };
-            const userId = req.user?.id as string;
+  return async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      const { classroomId } = req.params as { classroomId: string };
+      const userId = req.user?.id as string;
 
-            if(!classroomId?.trim() || !userId?.trim()) {
-                throw new BadRequestError("Classroom ID & User ID is required");
-            }
+      if (!classroomId?.trim() || !userId?.trim()) {
+        throw new BadRequestError("Classroom ID & User ID is required");
+      }
 
-            const membership = await prisma.classroomMember.findUnique({
-                where: {
-                    userId_classroomId: {
-                        userId: userId,
-                        classroomId: classroomId,
-                    },
-                },
-            });
+      const membership = await prisma.classroomMember.findUnique({
+        where: {
+          userId_classroomId: {
+            userId: userId,
+            classroomId: classroomId,
+          },
+        },
+      });
 
-            if(!membership || !allowedClassroomRoles.includes(membership.role) || membership.membershipStatus === "PENDING") {
-                throw new ForbiddenError(`This action is restricted to APPROVED ${allowedClassroomRoles.join(" or ")} role(s) only`);
-            }
+      if (
+        !membership ||
+        !allowedClassroomRoles.includes(membership.role) ||
+        membership.membershipStatus === "PENDING"
+      ) {
+        throw new ForbiddenError(
+          `This action is restricted to APPROVED ${allowedClassroomRoles.join(" or ")} role(s) only`,
+        );
+      }
 
-            req.membership = membership;
-            next();
-        } catch (error) {
-            next(error);
-        }
-    };
+      req.membership = membership;
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
 };
 
 /** @constant isClassroomStudent - Access restricted to classroom members with role STUDENT */
