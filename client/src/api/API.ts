@@ -5,4 +5,4 @@ const API = axios.create({
     withCredentials: true,
 });
 
-export default API;AuthenticatorAssertionResponse.
+export default API;
