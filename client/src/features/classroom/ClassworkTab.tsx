@@ -14,8 +14,8 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 // Modals
-import CreateCourseworkDialog from "@/features/classroom/CreateCourseworkDialogue";
-import CourseworkDetailsDialog from "@/features/classroom/CourseworkDetailsDialogue";
+import CreateCourseworkDialog from "@/features/classroom/CreateCourseworkDialog";
+import CourseworkDetailsDialog from "@/features/classroom/CourseworkDetailsDialog";
 
 const ClassworkTab = ({ classroom }: ClassworkTabProps) => {
     const { user } = useAppSelector((state) => state.auth);

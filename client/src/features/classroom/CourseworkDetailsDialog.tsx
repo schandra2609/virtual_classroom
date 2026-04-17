@@ -58,9 +58,8 @@ const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId }: Cour
     };
 
     const handleLaunchSecureBrowser = () => {
-        // This will attempt to open the Electron app via a custom deep link protocol
-        window.location.href = `vc-exam://start?classroomId=${classroomId}&paperId=${work.id}&token=TEMP_SECURE_TOKEN`;
-        toast.info("Attempting to launch Secure CBT Browser...");
+        toast.info("Entering secure exam environment...");
+        navigate(`/dashboard/cbt-player/${classroomId}/${work.id}`);
     };
 
     return (
@@ -175,9 +174,9 @@ const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId }: Cour
                                     <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg flex gap-3">
                                         <FiShield className="h-6 w-6 text-amber-600 shrink-0 mt-0.5" />
                                         <div>
-                                            <p className="text-sm font-semibold text-amber-900">Secure Browser Required</p>
+                                            <p className="text-sm font-semibold text-amber-900">Strict Anti-Cheat Enforced</p>
                                             <p className="text-xs text-amber-700 mt-1">
-                                                This examination uses the proprietary Pause/Resume algorithm and requires our Electron Desktop App to monitor background processes and prevent tab-switching.
+                                                This exam requires Fullscreen mode. Navigating to other tabs, minimizing the browser, or exiting fullscreen will instantly lock your exam and notify the tutor.
                                             </p>
                                         </div>
                                     </div>
@@ -187,11 +186,8 @@ const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId }: Cour
                                         onClick={handleLaunchSecureBrowser}
                                     >
                                         <FiMonitor className="h-4 w-4" />
-                                        Launch Desktop App
+                                        Start Secure Exam
                                     </Button>
-                                    <p className="text-center text-xs text-slate-500">
-                                        Don't have the app? <a href="#" className="text-primary hover:underline">Download it here</a>.
-                                    </p>
                                 </div>
                             )}
                         </div>
