@@ -1,87 +1,40 @@
-// import API from "./API.ts";
-import type { UserProfile } from "./user.service.ts";
-
-export interface ClassroomMember {
-    userId: string;
-    classroomId: string;
-    role: 'CREATOR' | 'CO_TUTOR' | 'STUDENT';
-    membershipStatus: 'PENDING' | 'APPROVED';
-    feePaidUntil?: Date | null;
-    joinedAt: Date;
-    user: Partial<UserProfile>;
-}
-
-export interface UpdatePaymentData {
-    feePaidUntil: Date;
-}
-
-const DUMMY_MEMBERS: ClassroomMember[] = [
-    {
-        userId: "usr_123",
-        classroomId: "cls_101",
-        role: "STUDENT",
-        membershipStatus: "APPROVED",
-        joinedAt: new Date(),
-        user: { fullName: "Demo Student", email: "student@demo.com" }
-    },
-    {
-        userId: "usr_999",
-        classroomId: "cls_101",
-        role: "STUDENT",
-        membershipStatus: "PENDING",
-        joinedAt: new Date(),
-        user: { fullName: "Pending Student", email: "pending@demo.com" }
-    }
-];
+import { API } from "@/api/API";
+import type { ApiResponse } from "@/api/types";
 
 export const memberService = {
     /**
      * @route GET /api/v1/classrooms/:classroomId/members
      * @description Fetches all members (or filtered by PENDING/APPROVED status)
      */
-    getClassroomMembers: async (classroomId: string, statusFilter?: 'PENDING' | 'APPROVED') => {
-        console.log(`Mock API: Fetching members for ${classroomId} (Filter: ${statusFilter})...`);
-        return new Promise<{ members: ClassroomMember[] }>((resolve) => {
-            setTimeout(() => {
-                let filtered = DUMMY_MEMBERS;
-                if (statusFilter) {
-                    filtered = DUMMY_MEMBERS.filter(m => m.membershipStatus === statusFilter);
-                }
-                resolve({ members: filtered });
-            }, 800);
-        });
+    getClassroomMembers: async (classroomId: string, status?: 'APPROVED' | 'PENDING' | 'REJECTED') => {
+        const response = await API.get(`/classrooms/${classroomId}/members${status ? `?status=${status}` : ''}`);
+        return response.data;
     },
 
     /**
      * @route DELETE /api/v1/classrooms/:classroomId/members/:memberId
      * @description Expels a member from the classroom
      */
-    removeMember: async (classroomId: string, memberId: string) => {
-        console.log(`Mock API: Removing member ${memberId} from ${classroomId}...`);
-        return new Promise<{ message: string }>((resolve) => {
-            setTimeout(() => resolve({ message: 'Member removed successfully' }), 1000);
-        });
+    removeMember: async (classroomId: string, userId: string) => {
+        const response = await API.delete(`/classrooms/${classroomId}/members/${userId}`);
+        return response.data;
     },
 
     /**
      * @route PATCH /api/v1/classrooms/:classroomId/members/:studentId/approve
      * @description Approves a student's pending join request
      */
-    approveStudent: async (classroomId: string, studentId: string) => {
-        console.log(`Mock API: Approving student ${studentId} in ${classroomId}...`);
-        return new Promise<{ message: string }>((resolve) => {
-            setTimeout(() => resolve({ message: 'Student request approved' }), 800);
-        });
+    approveStudent: async (classroomId: string, studentId: string): Promise<ApiResponse<null>> => {
+        const response = await API.patch(`/classrooms/${classroomId}/members/${studentId}/approve`);
+        return response.data;
     },
 
     /**
      * @route PATCH /api/v1/classrooms/:classroomId/members/:studentId/payment
      * @description Updates the fee-validity period (expiry date) for a student
      */
-    updateStudentPayment: async (classroomId: string, studentId: string, data: UpdatePaymentData) => {
-        console.log(`Mock API: Updating payment for ${studentId} in ${classroomId}...`, data);
-        return new Promise<{ message: string }>((resolve) => {
-            setTimeout(() => resolve({ message: 'Payment period updated successfully' }), 1000);
-        });
+    updateMembershipStatus: async (classroomId: string, userId: string, status: 'APPROVED' | 'REJECTED') => {
+        const response = await API.patch(`/classrooms/${classroomId}/members/${userId}`, { status });
+        return response.data;
     }
 };
