@@ -20,14 +20,15 @@ const router: Router = Router({ mergeParams: true });
  * @section Base Discussion Routes
  * Mounted at: /
  */
-router.route("/")
-    /** 
-     * @route GET / 
+router
+    .route("/")
+    /**
+     * @route GET /
      * @description Fetch all comments for the specific announcement.
      */
     .get(commentController.getCommentsForAnnouncement as any)
-    /** 
-     * @route POST / 
+    /**
+     * @route POST /
      * @description Post a new comment to the announcement.
      */
     .post(commentController.createComment as any);
@@ -36,14 +37,15 @@ router.route("/")
  * @section Individual Comment Management
  * Mounted at: /:commentId
  */
-router.route("/:commentId")
-    /** 
-     * @route PATCH /:commentId 
+router
+    .route("/:commentId")
+    /**
+     * @route PATCH /:commentId
      * @description Update text of a specific comment. Access: Author only.
      */
     .patch(commentController.updateComment as any)
-    /** 
-     * @route DELETE /:commentId 
+    /**
+     * @route DELETE /:commentId
      * @description Permanently remove a comment. Access: Author or Classroom Staff.
      */
     .delete(commentController.deleteComment as any);

@@ -9,10 +9,10 @@
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import {
-  BadRequestError,
-  ForbiddenError,
-  NotFoundError,
-} from "../errors/handler.error.ts";
+    BadRequestError,
+    ForbiddenError,
+    NotFoundError,
+} from "../utils/Error.ts";
 import { prisma } from "../configs/database.config.ts";
 import { deleteFile, uploadBuffer } from "../services/storage.service.ts";
 import { notifyNewAnnouncement } from "../services/socket.service.ts";
@@ -30,7 +30,11 @@ import Logger from "../utils/Logger.ts";
  * @param {NextFunction} next - Error propagation.
  * @returns {Promise<void>}
  */
-export const getAnnouncements = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const getAnnouncements = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const { classroomId } = req.params as { classroomId: string };
         if (!classroomId.trim()) {
@@ -46,7 +50,7 @@ export const getAnnouncements = async (req: AuthenticatedRequest, res: Response,
             },
             orderBy: { createdAt: "desc" },
         });
-        
+
         res.status(200).json({
             success: true,
             data: announcements,
@@ -70,7 +74,11 @@ export const getAnnouncements = async (req: AuthenticatedRequest, res: Response,
  * @param {AuthenticatedRequest} req - Request containing 'classroomId' in params and 'message' in body.
  * @returns {Promise<void>}
  */
-export const createAnnouncement = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const createAnnouncement = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const { classroomId } = req.params as { classroomId: string };
         const authorId = req.user?.id as string;
@@ -139,7 +147,10 @@ export const createAnnouncement = async (req: AuthenticatedRequest, res: Respons
         try {
             // 1. Fetch Classroom Members (Students and Tutors)
             const members = await prisma.classroomMember.findMany({
-                where: { classroomId: classroomId, membershipStatus: "APPROVED" },
+                where: {
+                    classroomId: classroomId,
+                    membershipStatus: "APPROVED",
+                },
                 include: { user: { select: { fullName: true, email: true } } },
             });
 
@@ -184,41 +195,43 @@ export const createAnnouncement = async (req: AuthenticatedRequest, res: Respons
  * @returns {Promise<void>}
  */
 export const deleteAnnouncement = async (
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction,
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
 ): Promise<void> => {
-  try {
-    const { announcementId } = req.params as { announcementId: string };
-    const userId = req.user?.id as string;
-    if (!announcementId?.trim()) {
-      throw new BadRequestError("Announcement ID is required.");
+    try {
+        const { announcementId } = req.params as { announcementId: string };
+        const userId = req.user?.id as string;
+        if (!announcementId?.trim()) {
+            throw new BadRequestError("Announcement ID is required.");
+        }
+
+        const announcement = await prisma.announcement.findUnique({
+            where: { id: announcementId },
+            include: { attachments: true },
+        });
+        if (!announcement) throw new NotFoundError("Announcement not found.");
+
+        const isAuthor = announcement.authorId === userId;
+        const isCreator = req.membership?.role === "CREATOR";
+        if (!isCreator && !isAuthor)
+            throw new ForbiddenError(
+                "You can only delete your own announcements.",
+            );
+
+        if (announcement.attachments.length > 0) {
+            await Promise.all(
+                announcement.attachments.map((att) => deleteFile(att.url)),
+            );
+        }
+
+        await prisma.announcement.delete({ where: { id: announcementId } });
+
+        res.status(200).json({
+            success: true,
+            message: "Announcement deleted successfully.",
+        });
+    } catch (error) {
+        next(error);
     }
-
-    const announcement = await prisma.announcement.findUnique({
-      where: { id: announcementId },
-      include: { attachments: true },
-    });
-    if (!announcement) throw new NotFoundError("Announcement not found.");
-
-    const isAuthor = announcement.authorId === userId;
-    const isCreator = req.membership?.role === "CREATOR";
-    if (!isCreator && !isAuthor)
-      throw new ForbiddenError("You can only delete your own announcements.");
-
-    if (announcement.attachments.length > 0) {
-      await Promise.all(
-        announcement.attachments.map((att) => deleteFile(att.url)),
-      );
-    }
-
-    await prisma.announcement.delete({ where: { id: announcementId } });
-
-    res.status(200).json({
-      success: true,
-      message: "Announcement deleted successfully.",
-    });
-  } catch (error) {
-    next(error);
-  }
 };

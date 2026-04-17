@@ -26,47 +26,56 @@ const router: Router = Router();
  * @section Sub-Routers Mounting
  */
 
-/** 
+/**
  * @route /api/v1/admin
  * @access Private (ADMINISTRATOR only)
  */
-router.use("/admin", verifyToken as any, authorize("ADMINISTRATOR") as any, adminRouter);
+router.use(
+    "/admin",
+    verifyToken as any,
+    authorize("ADMINISTRATOR") as any,
+    adminRouter,
+);
 
-/** 
+/**
  * @route /api/v1/auth
  * @access Public / Private (Mix)
  */
 router.use("/auth", authRouter);
 
-/** 
+/**
  * @route /api/v1/users/me
  * @access Private (Authenticated Users)
  */
-router.use("/users/me", verifyToken as any ,userRouter);
+router.use("/users/me", verifyToken as any, userRouter);
 
-/** 
+/**
  * @route /api/v1/classrooms
  * @access Private (Authenticated Users)
  */
-router.use("/classroom", verifyToken as any, classroomRouter);
+router.use("/classrooms", verifyToken as any, classroomRouter);
 
-/** 
+/**
  * @route /api/v1/invitations
  * @access Private (TUTOR only)
  */
-router.use("/invitations", verifyToken as any, authorize("TUTOR") as any, invitationRouter);
+router.use(
+    "/invitations",
+    verifyToken as any,
+    authorize("TUTOR") as any,
+    invitationRouter,
+);
 
 /**
  * @route GET /api/v1/health
  * @description System health check endpoint to verify API availability.
  * @access Public
  */
-router.route("/health")
-    .get((_req: Request, res: Response) => {
-        res.status(200).json({
-            success: true,
-            message: "Virtual Classroom API is running",
-        });
+router.route("/health").get((_req: Request, res: Response) => {
+    res.status(200).json({
+        success: true,
+        message: "Virtual Classroom API is running",
     });
+});
 
 export default router;

@@ -1,7 +1,7 @@
 /**
  * @file classroom.routes.ts
  * @module Routes/Classroom
- * @description Definitive routing for Classroom entities. Handles nesting 
+ * @description Definitive routing for Classroom entities. Handles nesting
  * for sub-resources like announcements, assignments, and examinations.
  * @author Sayan Chandra
  */
@@ -28,21 +28,30 @@ const router: Router = Router();
 /**
  * @section Core Discovery & Creation
  */
-router.route("/")
+router
+    .route("/")
     /** @route GET /api/v1/classrooms - Fetch classrooms for logged-in user */
     .get(classroomController.getMyClassrooms as any)
     /** @route POST /api/v1/classrooms - Initialize a new classroom (Tutors only) */
-    .post(authorize("TUTOR") as any, classroomController.createClassroom as any);
+    .post(
+        authorize("TUTOR") as any,
+        classroomController.createClassroom as any,
+    );
 
 /** @section Students join via code */
-router.route("/join")
+router
+    .route("/join")
     /** @route POST /api/v1/classrooms/join */
-    .post(authorize("STUDENT") as any, classroomController.joinClassroom as any);
+    .post(
+        authorize("STUDENT") as any,
+        classroomController.joinClassroom as any,
+    );
 
 /**
  * @section Specific Classroom Management
  */
-router.route("/:classroomId")
+router
+    .route("/:classroomId")
     /** @route GET /:id - Detailed view (Staff/Approved Students) */
     .get(isMember as any, classroomController.getClassroomById as any)
     /** @route PATCH /:id - Metadata update (Creator only) */
@@ -51,28 +60,32 @@ router.route("/:classroomId")
     .delete(isCreator as any, classroomController.deleteClassroom as any);
 
 /** @section Handles classroom leave requests */
-router.route("/:classroomId/leave")
+router
+    .route("/:classroomId/leave")
     /** @route DELETE :id/leave */
     .delete(isMember as any, classroomController.leaveClassroom as any);
 
 /**
  * @section Issue staff invitation (Creator only)
  */
-router.route("/:classroomId/invite-tutor")
+router
+    .route("/:classroomId/invite-tutor")
     /** @route POST /:id/invite-tutor */
     .post(isCreator as any, classroomController.inviteCoTutor as any);
 
 /**
  * @section Regenerate joining code (Creator only)
  */
-router.route("/:classroomId/refresh-code")
+router
+    .route("/:classroomId/refresh-code")
     /** @route PATCH /:id/refresh-code */
     .patch(isCreator as any, classroomController.refreshJoiningCode as any);
 
 /**
  * @section Change classroom owner (Creator only)
  */
-router.route("/:classroomId/transfer-ownership")
+router
+    .route("/:classroomId/transfer-ownership")
     /** @route PATCH /:id/transfer-ownership */
     .patch(isCreator as any, classroomController.transferOwnership as any);
 

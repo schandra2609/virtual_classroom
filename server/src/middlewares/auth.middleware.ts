@@ -10,10 +10,10 @@ import jwt from "jsonwebtoken";
 import type { JwtPayload } from "jsonwebtoken";
 import type { ClassroomMember, User } from "../../generated/prisma/client.ts";
 import {
-  BadRequestError,
-  ForbiddenError,
-  UnauthorizedError,
-} from "../errors/handler.error.ts";
+    BadRequestError,
+    ForbiddenError,
+    UnauthorizedError,
+} from "../utils/Error.ts";
 import { ENV_CONFIG } from "../configs/env.config.ts";
 import { prisma } from "../configs/database.config.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
@@ -27,8 +27,8 @@ import { dayjs } from "../configs/dayjs.config.ts";
  * @property {ClassroomMember} [membership] - The membership details if the request is classroom-scoped.
  */
 export interface AuthenticatedRequest extends Request {
-  user?: Partial<User>;
-  membership?: ClassroomMember;
+    user?: Partial<User>;
+    membership?: ClassroomMember;
 }
 
 /**
@@ -46,96 +46,98 @@ export interface AuthenticatedRequest extends Request {
  * @returns {Promise<void>}
  */
 export const verifyToken = async (
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction,
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
 ): Promise<void> => {
-  try {
-    const authHeader = req.headers.authorization?.trim();
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      throw new UnauthorizedError("Authorization header missing or malformed");
-    }
+    try {
+        const authHeader = req.headers.authorization?.trim();
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            throw new UnauthorizedError("Authorization header missing or malformed");
+        }
 
-    const token = authHeader.split(" ")[1];
-    if (!token) {
-      throw new UnauthorizedError("Token not provided");
-    }
+        const token = authHeader.split(" ")[1];
+        if (!token) {
+            throw new UnauthorizedError("Token not provided");
+        }
 
-    const decoded = jwt.verify(
-      token,
-      ENV_CONFIG.ACCESS_TOKEN.SECRET,
-    ) as JwtPayload;
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        accountType: true,
-        isEmailVerified: true,
-        emailVerificationExpiry: true,
-        tutorVerificationStatus: true,
-      },
-    });
-    if (!user) {
-      throw new UnauthorizedError("User not found");
-    }
+        const decoded = jwt.verify(
+            token,
+            ENV_CONFIG.ACCESS_TOKEN.SECRET,
+        ) as JwtPayload;
+        
+        const user = await prisma.user.findUnique({
+            where: { id: decoded.id },
+            select: {
+                id: true,
+                email: true,
+                fullName: true,
+                accountType: true,
+                isEmailVerified: true,
+                emailVerificationExpiry: true,
+                profilePhotoUrl: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+        });
+        if (!user) {
+            throw new UnauthorizedError("User not found");
+        }
 
-    /**
-     * Business Logic: Verification Lifecycle
-     * Revokes 'isEmailVerified' status if the verification period has expired.
-     */
-    if (
-      user.accountType !== "ADMINISTRATOR" &&
-      user.isEmailVerified &&
-      user.emailVerificationExpiry &&
-      dayjs().isAfter(user.emailVerificationExpiry)
-    ) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { isEmailVerified: false, emailVerificationExpiry: null },
-      });
-      user.isEmailVerified = false;
-      user.emailVerificationExpiry = null;
-    }
+        /**
+         * Business Logic: Verification Lifecycle
+         */
+        if (
+            user.accountType !== "ADMINISTRATOR" &&
+            user.isEmailVerified &&
+            user.emailVerificationExpiry &&
+            dayjs().isAfter(user.emailVerificationExpiry)
+        ) {
+            await prisma.user.update({
+                where: { id: user.id },
+                data: { isEmailVerified: false, emailVerificationExpiry: null },
+            });
+            user.isEmailVerified = false;
+            user.emailVerificationExpiry = null;
+        }
 
-    req.user = user;
-    next();
-  } catch (error: any) {
-    if (
-      error.name === "TokenExpiredError" ||
-      error.name === "JsonWebTokenError"
-    ) {
-      next(new UnauthorizedError("Invalid or expired token"));
-    } else {
-      next(error);
+        req.user = user;
+        next();
+    } catch (error: any) {
+        if (
+            error.name === "TokenExpiredError" ||
+            error.name === "JsonWebTokenError"
+        ) {
+            next(new UnauthorizedError("Invalid or expired token"));
+        } else {
+            next(error);
+        }
     }
-  }
 };
 
 /**
  * @function authorize
  * @description General RBAC middleware to restrict access by account type.
- * @param {...string[]} allowedAccountTypes - List of AccountType enums (e.g., 'ADMINISTRATOR', 'TUTOR').
- * @returns {function} An Express middleware function.
+ * @param {string[]} allowedAccountTypes - List of AccountType enums (e.g., 'ADMINISTRATOR', 'TUTOR').
+ * @returns {Function} An Express middleware function.
  * @example
  * router.get("/any-admin-only-route", authorize("ADMINISTRATOR"), controller);
  */
-export const authorize = (...allowedAccountTypes: string[]) => {
-  return (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction,
-  ): void => {
-    if (!allowedAccountTypes.includes(req.user?.accountType as string)) {
-      return next(
-        new ForbiddenError(
-          `This action is restricted to ${allowedAccountTypes.join(" or ")} account(s) only`,
-        ),
-      );
-    }
-    return next();
-  };
+export const authorize = (...allowedAccountTypes: string[]): Function => {
+    return (
+        req: AuthenticatedRequest,
+        res: Response,
+        next: NextFunction,
+    ): void => {
+        if (!allowedAccountTypes.includes(req.user?.accountType as string)) {
+            return next(
+                new ForbiddenError(
+                    `This action is restricted to ${allowedAccountTypes.join(" or ")} account(s) only`,
+                ),
+            );
+        }
+        return next();
+    };
 };
 
 /**
@@ -144,47 +146,47 @@ export const authorize = (...allowedAccountTypes: string[]) => {
  * Requires a 'classroomId' parameter in the URL.
  * Attaches a 'membership' object with the request, assuring the object is not null/undefined.
  * @param {string[]} allowedClassroomRoles - List of ClassroomRole enums (e.g., 'CREATOR', 'STUDENT').
- * @returns {function} An asynchronous Express middleware function.
+ * @returns {Function} An asynchronous Express middleware function.
  */
-const checkClassroomRole = (...allowedClassroomRoles: string[]) => {
-  return async (
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
-    try {
-      const { classroomId } = req.params as { classroomId: string };
-      const userId = req.user?.id as string;
+const checkClassroomRole = (...allowedClassroomRoles: string[]): Function => {
+    return async (
+        req: AuthenticatedRequest,
+        res: Response,
+        next: NextFunction,
+    ): Promise<void> => {
+        try {
+            const { classroomId } = req.params as { classroomId: string };
+            const userId = req.user?.id as string;
 
-      if (!classroomId?.trim() || !userId?.trim()) {
-        throw new BadRequestError("Classroom ID & User ID is required");
-      }
+            if (!classroomId?.trim() || !userId?.trim()) {
+                throw new BadRequestError("Classroom ID & User ID is required");
+            }
 
-      const membership = await prisma.classroomMember.findUnique({
-        where: {
-          userId_classroomId: {
-            userId: userId,
-            classroomId: classroomId,
-          },
-        },
-      });
+            const membership = await prisma.classroomMember.findUnique({
+                where: {
+                    userId_classroomId: {
+                        userId: userId,
+                        classroomId: classroomId,
+                    },
+                },
+            });
 
-      if (
-        !membership ||
-        !allowedClassroomRoles.includes(membership.role) ||
-        membership.membershipStatus === "PENDING"
-      ) {
-        throw new ForbiddenError(
-          `This action is restricted to APPROVED ${allowedClassroomRoles.join(" or ")} role(s) only`,
-        );
-      }
+            if (
+                !membership ||
+                !allowedClassroomRoles.includes(membership.role) ||
+                membership.membershipStatus === "PENDING"
+            ) {
+                throw new ForbiddenError(
+                    `This action is restricted to APPROVED ${allowedClassroomRoles.join(" or ")} role(s) only`,
+                );
+            }
 
-      req.membership = membership;
-      next();
-    } catch (error) {
-      next(error);
-    }
-  };
+            req.membership = membership;
+            next();
+        } catch (error) {
+            next(error);
+        }
+    };
 };
 
 /** @constant isClassroomStudent - Access restricted to classroom members with role STUDENT */

@@ -9,7 +9,10 @@
 import type { Request, Response, NextFunction } from "express";
 import { ajConfig } from "../configs/arcjet.config.ts";
 import Logger from "../utils/Logger.ts";
-import { ForbiddenError, TooManyRequestsError } from "../errors/handler.error.ts";
+import {
+    ForbiddenError,
+    TooManyRequestsError,
+} from "../errors/handler.error.ts";
 
 /**
  * @async
@@ -32,7 +35,11 @@ import { ForbiddenError, TooManyRequestsError } from "../errors/handler.error.ts
 
  * @returns {Promise<void>}
  */
-export const arcjetMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const arcjetMiddleware = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         /**
          * @description Obtain a security decision based on the request fingerprint.
@@ -45,26 +52,34 @@ export const arcjetMiddleware = async (req: Request, res: Response, next: NextFu
             headers: req.headers,
             socket: { remoteAddress: req.ip || "" },
         });
-        if(decision.isDenied()) {
-            /** 
+        if (decision.isDenied()) {
+            /**
              * @section Denial Logic
              * Identify the specific reason for denial to return the correct HTTP status.
              */
             if (decision.reason.isRateLimit()) {
                 Logger.warn(`Security: Rate Limit exceeded for IP ${req.ip}`);
-                throw new TooManyRequestsError("Rate limit exceeded. Please try again later.");
+                throw new TooManyRequestsError(
+                    "Rate limit exceeded. Please try again later.",
+                );
             }
 
             if (decision.reason.isBot()) {
                 Logger.warn(`Security: Bot traffic blocked from IP ${req.ip}`);
-                throw new ForbiddenError("Bot traffic is not permitted on this resource.");
+                throw new ForbiddenError(
+                    "Bot traffic is not permitted on this resource.",
+                );
             }
 
-            /** 
+            /**
              * Generic denial (usually Shield/WAF rules or sensitive info detection)
              */
-            Logger.error(`Security: Request denied by Arcjet Shield for IP ${req.ip}`);
-            throw new ForbiddenError("Access denied due to security policy violation.");
+            Logger.error(
+                `Security: Request denied by Arcjet Shield for IP ${req.ip}`,
+            );
+            throw new ForbiddenError(
+                "Access denied due to security policy violation.",
+            );
         }
 
         /**
@@ -74,8 +89,8 @@ export const arcjetMiddleware = async (req: Request, res: Response, next: NextFu
     } catch (error) {
         /**
          * @section Error Handling
-         * If Arcjet itself fails (network issue), we log the error but allow 
-         * the request to proceed (Fail-Open) to ensure high availability, 
+         * If Arcjet itself fails (network issue), we log the error but allow
+         * the request to proceed (Fail-Open) to ensure high availability,
          * unless you prefer a Fail-Closed approach.
          */
         Logger.error("Arcjet Middleware Error");

@@ -20,7 +20,7 @@ export const minioClient: Minio.Client = new Minio.Client({
     port: ENV_CONFIG.MINIO.PORT,
     useSSL: ENV_CONFIG.MINIO.USE_SSL,
     accessKey: ENV_CONFIG.MINIO.ACCESS_KEY,
-    secretKey: ENV_CONFIG.MINIO.SECRET_KEY
+    secretKey: ENV_CONFIG.MINIO.SECRET_KEY,
 });
 
 /**
@@ -38,18 +38,18 @@ export const BucketName: string = ENV_CONFIG.MINIO.BUCKET;
  * This ensures the application is "Plug-and-Play" across different environments.
  * @returns {Promise<void>}
  */
-export const initializeStorage = async () : Promise<void> => {
+export const initializeStorage = async (): Promise<void> => {
     try {
         const existingBucket = await minioClient.bucketExists(BucketName);
-        if(existingBucket) {
+        if (existingBucket) {
             Logger.log(`MinIO: Bucket "${BucketName}" is ready.`);
         } else {
             // US-East-1 is used as the default fallback region for S3 compatibility
-            await minioClient.makeBucket(BucketName, 'us-east-1');
+            await minioClient.makeBucket(BucketName, "us-east-1");
             Logger.log(`MinIO: Bucket "${BucketName}" created successfully.`);
         }
     } catch (error) {
-        Logger.error('MinIO: Failed to initialize storage.');
+        Logger.error("MinIO: Failed to initialize storage.");
         Logger.debug(error instanceof Error ? error.message : String(error));
     }
 };

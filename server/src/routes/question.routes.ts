@@ -12,7 +12,7 @@ import * as questionController from "../controllers/question.controller.ts";
 /**
  * @constant router
  * @type {Router}
- * @description Router instance with 'mergeParams' enabled to access ':paperId' 
+ * @description Router instance with 'mergeParams' enabled to access ':paperId'
  * from the parent Question Paper router.
  */
 const router: Router = Router({ mergeParams: true });
@@ -21,9 +21,10 @@ const router: Router = Router({ mergeParams: true });
  * @section Question Collection Management
  * Mounted at: /
  */
-router.route("/")
-    /** 
-     * @route POST / 
+router
+    .route("/")
+    /**
+     * @route POST /
      * @description Add a new question (MCQ/MSQ/NAT) to the paper.
      * @access Restricted: Classroom Tutor (verified in parent router)
      */
@@ -33,16 +34,17 @@ router.route("/")
  * @section Individual Question Management
  * Mounted at: /:questionId
  */
-router.route("/:questionId")
-    /** 
-     * @route PATCH /:questionId 
+router
+    .route("/:questionId")
+    /**
+     * @route PATCH /:questionId
      * @description Update question text or marks.
      * @access Restricted: Classroom Tutor
      */
     .patch(questionController.updateQuestion as any)
-    
-    /** 
-     * @route DELETE /:questionId 
+
+    /**
+     * @route DELETE /:questionId
      * @description Remove the question from the paper.
      * @access Restricted: Classroom Tutor
      */

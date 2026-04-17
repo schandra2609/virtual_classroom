@@ -1,15 +1,15 @@
 /**
  * @file question.controller.ts
  * @module Controllers/Classroom/Questions
- * @description Controller responsible for managing the individual questions within a 
- * Question Paper. Supports multiple question formats: Multiple Choice (MCQ), 
+ * @description Controller responsible for managing the individual questions within a
+ * Question Paper. Supports multiple question formats: Multiple Choice (MCQ),
  * Multiple Select (MSQ), and Numerical Answer Type (NAT).
  * @author Sayan Chandra
  */
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import type { Option, QuestionType } from "../../generated/prisma/client.ts";
-import { BadRequestError } from "../errors/handler.error.ts";
+import { BadRequestError } from "../utils/Error.ts";
 import { prisma } from "../configs/database.config.ts";
 
 /**
@@ -26,16 +26,29 @@ import { prisma } from "../configs/database.config.ts";
  * @throws {BadRequestError} 400 - If validation for the specific question type fails.
  * @returns {Promise<void>}
  */
-export const addQuestion = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const addQuestion = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const { paperId } = req.params as { paperId: string };
-        const { text, type, marks, options, numericalCorrectAnswer } = req.body as { text: string, type: QuestionType, marks: number, options: Option[], numericalCorrectAnswer: number };
-        
+        const { text, type, marks, options, numericalCorrectAnswer } =
+            req.body as {
+                text: string;
+                type: QuestionType;
+                marks: number;
+                options: Option[];
+                numericalCorrectAnswer: number;
+            };
+
         /** @section Basic Field Validation */
-        if(![paperId, text, type].every((field) => field.trim())) {
-            throw new BadRequestError("Paper ID, text, type fields are required.");
+        if (![paperId, text, type].every((field) => field.trim())) {
+            throw new BadRequestError(
+                "Paper ID, text, type fields are required.",
+            );
         }
-        if(typeof marks !== "number" || Number.isNaN(marks) || marks <= 0) {
+        if (typeof marks !== "number" || Number.isNaN(marks) || marks <= 0) {
             throw new BadRequestError("Marks must be a valid number.");
         }
         if (!["MCQ", "MSQ", "NAT"].includes(type.toUpperCase())) {
@@ -44,19 +57,38 @@ export const addQuestion = async (req: AuthenticatedRequest, res: Response, next
 
         /** @section Business Rule Validation */
         // Validation for Numerical Answer Type
-        if (type.toUpperCase() === "NAT" && numericalCorrectAnswer === undefined) {
-            throw new BadRequestError("numericalCorrectAnswer is required for NAT questions");
+        if (
+            type.toUpperCase() === "NAT" &&
+            numericalCorrectAnswer === undefined
+        ) {
+            throw new BadRequestError(
+                "numericalCorrectAnswer is required for NAT questions",
+            );
         }
-        if(type.toUpperCase() === "NAT" && (typeof numericalCorrectAnswer !== "number" || Number.isNaN(numericalCorrectAnswer))) {
+        if (
+            type.toUpperCase() === "NAT" &&
+            (typeof numericalCorrectAnswer !== "number" ||
+                Number.isNaN(numericalCorrectAnswer))
+        ) {
             throw new BadRequestError("Invalid answer for an NAT question.");
         }
 
         // Validation for Option-based questions (MCQ/MSQ)
-        if (['MCQ', 'MSQ'].includes(type.toUpperCase()) && (!Array.isArray(options) || options.length < 2)) {
-            throw new BadRequestError("At least two options are required for MCQ/MSQ questions");
+        if (
+            ["MCQ", "MSQ"].includes(type.toUpperCase()) &&
+            (!Array.isArray(options) || options.length < 2)
+        ) {
+            throw new BadRequestError(
+                "At least two options are required for MCQ/MSQ questions",
+            );
         }
-        if (type.toUpperCase() === 'MCQ' && options.filter(opt => opt.isCorrect).length !== 1) {
-            throw new BadRequestError("Exactly one option must be marked as correct for MCQ questions.");
+        if (
+            type.toUpperCase() === "MCQ" &&
+            options.filter((opt) => opt.isCorrect).length !== 1
+        ) {
+            throw new BadRequestError(
+                "Exactly one option must be marked as correct for MCQ questions.",
+            );
         }
 
         /** @section Atomic Database Operation */
@@ -67,7 +99,8 @@ export const addQuestion = async (req: AuthenticatedRequest, res: Response, next
                     text: text,
                     type: type,
                     marks: marks,
-                    numericalCorrectAnswer: type === "NAT" ? numericalCorrectAnswer : null,
+                    numericalCorrectAnswer:
+                        type === "NAT" ? numericalCorrectAnswer : null,
                     qpaper: { connect: { id: paperId } },
                 },
             });
@@ -75,7 +108,7 @@ export const addQuestion = async (req: AuthenticatedRequest, res: Response, next
             // 2. Create Options if applicable
             if (options && ["MCQ", "MSQ"].includes(type.toUpperCase())) {
                 await txn.option.createMany({
-                    data: options.map(opt => ({
+                    data: options.map((opt) => ({
                         text: opt.text,
                         isCorrect: opt.isCorrect || false,
                         questionId: question.id,
@@ -91,7 +124,7 @@ export const addQuestion = async (req: AuthenticatedRequest, res: Response, next
         });
 
         res.status(201).json({
-            success: true, 
+            success: true,
             data: newQuestion,
             message: "Question added successfully.",
         });
@@ -108,24 +141,42 @@ export const addQuestion = async (req: AuthenticatedRequest, res: Response, next
  * @throws {BadRequestError} 400 - If the update payload is invalid or empty.
  * @returns {Promise<void>}
  */
-export const updateQuestion = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const updateQuestion = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const { questionId } = req.params as { questionId: string };
-        const { text, marks } = req.body as Partial<{ text: string, marks: number }>;
-        if(!questionId?.trim()) {
+        const { text, marks } = req.body as Partial<{
+            text: string;
+            marks: number;
+        }>;
+        if (!questionId?.trim()) {
             throw new BadRequestError("Question ID is required");
         }
-        if(!text?.trim() && (typeof marks !== "number" || Number.isNaN(marks) || marks <= 0)) {
+        if (
+            !text?.trim() &&
+            (typeof marks !== "number" || Number.isNaN(marks) || marks <= 0)
+        ) {
             throw new BadRequestError("Invalid update data provided.");
         }
 
         /** @section Partial Update Logic */
-        const dataToUpdate: { text?: string, marks?: number } = {};
-        if(text !== undefined && text?.trim()) dataToUpdate.text = text.trim();
+        const dataToUpdate: { text?: string; marks?: number } = {};
+        if (text !== undefined && text?.trim()) dataToUpdate.text = text.trim();
         // Only add marks if it's a valid positive number
-        if(marks !== undefined && typeof marks === "number" && !Number.isNaN(marks) && marks > 0) dataToUpdate.marks = marks;
+        if (
+            marks !== undefined &&
+            typeof marks === "number" &&
+            !Number.isNaN(marks) &&
+            marks > 0
+        )
+            dataToUpdate.marks = marks;
         if (Object.keys(dataToUpdate).length === 0) {
-            throw new BadRequestError("No valid update data provided (ensure text is non-empty and marks > 0).");
+            throw new BadRequestError(
+                "No valid update data provided (ensure text is non-empty and marks > 0).",
+            );
         }
 
         const updatedQuestion = await prisma.question.update({
@@ -146,18 +197,22 @@ export const updateQuestion = async (req: AuthenticatedRequest, res: Response, n
 /**
  * @async
  * @function deleteQuestion
- * @description Permanently deletes a question. 
+ * @description Permanently deletes a question.
  * Cascading logic in the database ensures associated options and answers are also removed.
  * @param {AuthenticatedRequest} req - Request containing questionId in params.
  * @returns {Promise<void>}
  */
-export const deleteQuestion = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const deleteQuestion = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const { questionId } = req.params as { questionId: string };
-        if(!questionId?.trim()) {
+        if (!questionId?.trim()) {
             throw new BadRequestError("Question ID is required.");
         }
-        
+
         await prisma.question.delete({ where: { id: questionId } });
 
         res.status(200).json({

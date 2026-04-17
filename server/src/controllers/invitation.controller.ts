@@ -9,32 +9,43 @@
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import { prisma } from "../configs/database.config.ts";
-import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../errors/handler.error.ts";
+import {
+    BadRequestError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+} from "../utils/Error.ts";
 
 /**
  * @async
  * @function getMyInvitations
- * @description Retrieves all pending and active (non-expired) classroom invitations 
+ * @description Retrieves all pending and active (non-expired) classroom invitations
  * sent to the currently authenticated user's email address.
  * @param {AuthenticatedRequest} req - Request object containing the user's email.
  * @param {Response} res - Success response with an array of invitations.
  * @param {NextFunction} next - Error propagation.
  * @returns {Promise<void>}
  */
-export const getMyInvitations = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const getMyInvitations = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const userEmail = req.user?.email as string;
         const invitations = await prisma.classroomInvitation.findMany({
             where: {
                 inviteeEmail: userEmail.toLowerCase(),
                 status: "PENDING",
-                expiresAt: { gt: new Date() },  // Only fetch non-expired invites
+                expiresAt: { gt: new Date() }, // Only fetch non-expired invites
             },
             include: {
-                classroom: { select: { name: true, subject: true, batch: true } },
-                inviter: { select: { fullName: true } }
+                classroom: {
+                    select: { name: true, subject: true, batch: true },
+                },
+                inviter: { select: { fullName: true } },
             },
-            orderBy: { createdAt: 'desc' },
+            orderBy: { createdAt: "desc" },
         });
         res.status(200).json({
             success: true,
@@ -51,12 +62,12 @@ export const getMyInvitations = async (req: AuthenticatedRequest, res: Response,
  * @function acceptCoTutorInvitation
  * @description Processes the acceptance of an invitation.
  * Logic:
- * 1. Validates that the user is a 'VERIFIED' tutor.
+ * 1. Validates that the user is a 'VERIFIED' tutor by querying the TutorApplication ledger.
  * 2. Checks invitation existence, status, and expiry.
  * 3. Verifies that the inviteeEmail matches the authenticated user's email.
  * 4. Executes a **Database Transaction** to:
- *    - Create a 'CO_TUTOR' membership record.
- *    - Update the invitation status to 'ACCEPTED'.
+ * - Create a 'CO_TUTOR' membership record.
+ * - Update the invitation status to 'ACCEPTED'.
  * @param {AuthenticatedRequest} req - Request containing invitationId in URL params.
  * @param {Response} res - Success response confirming membership.
  * @param {NextFunction} next - Error propagation.
@@ -65,17 +76,27 @@ export const getMyInvitations = async (req: AuthenticatedRequest, res: Response,
  * @throws {ConflictError} 409 - If the user is already a member of the classroom.
  * @returns {Promise<void>}
  */
-export const acceptCoTutorInvitation = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const acceptCoTutorInvitation = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const { invitationId } = req.params as { invitationId: string };
         const user = req.user;
 
-        // Security Check: Only verified tutors can accept co-tutor roles
-        if(user?.tutorVerificationStatus !== "VERIFIED") {
-            throw new ForbiddenError("Not a verified tutor account");
-        }
-        if(!invitationId?.trim()) {
+        if (!invitationId?.trim()) {
             throw new BadRequestError("Invitation ID is required.");
+        }
+
+        // 🚨 SECURITY CHECK: Query the ledger to ensure they are a globally verified tutor
+        const latestApplication = await prisma.tutorApplication.findFirst({
+            where: { userId: user?.id as string },
+            orderBy: { createdAt: "desc" }
+        });
+
+        if (!latestApplication || latestApplication.status !== "VERIFIED") {
+            throw new ForbiddenError("Not a verified tutor account");
         }
 
         const invitation = await prisma.classroomInvitation.findUnique({
@@ -83,9 +104,14 @@ export const acceptCoTutorInvitation = async (req: AuthenticatedRequest, res: Re
         });
         if (!invitation || new Date() > invitation.expiresAt)
             throw new NotFoundError("Invitation not found or has expired");
+        
         // Integrity Check: Is the person logged in the one who was actually invited?
-        if (invitation.inviteeEmail.toLowerCase() !== user?.email?.toLowerCase())
-            throw new ForbiddenError("This invitation is intended for another user");
+        if (
+            invitation.inviteeEmail.toLowerCase() !== user?.email?.toLowerCase()
+        )
+            throw new ForbiddenError(
+                "This invitation is intended for another user",
+            );
 
         /**
          * @section Atomic Transaction
@@ -115,12 +141,14 @@ export const acceptCoTutorInvitation = async (req: AuthenticatedRequest, res: Re
          * P2002 handles the case where the user is already a member.
          * We mark the invitation as accepted to clean up the queue.
          */
-        if (error.code === 'P2002') {
+        if (error.code === "P2002") {
             await prisma.classroomInvitation.update({
                 where: { id: req.params?.invitationId as string },
                 data: { status: "ACCEPTED" },
             });
-            throw new ConflictError("You are already a member of this classroom.");
+            throw new ConflictError(
+                "You are already a member of this classroom.",
+            );
         }
         next(error);
     }

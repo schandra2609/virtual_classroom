@@ -11,21 +11,38 @@ import path from "path";
 import Logger from "../utils/Logger.ts";
 
 // Determine the environment and load the corresponding .env file
-config({ path: path.resolve(process.cwd(), `.env.${process.env.NODE_ENV || "development"}`) });
+config({
+    path: path.resolve(
+        process.cwd(),
+        `.env.${process.env.NODE_ENV || "development"}`,
+    ),
+});
 
 // Load all environment variables from process environment
 const {
-    NODE_ENV, PORT, API_V,
-    ACCESS_TOKEN_SECRET, ACCESS_TOKEN_LIFETIME,
-    REFRESH_TOKEN_SECRET, REFRESH_TOKEN_LIFETIME,
-    DATABASE_URL, DIRECT_URL,
-    ARCJET_API_KEY, ARCJET_ENV,
-    EMAIL_USER, EMAIL_APP_PASSWORD,
-    ADMIN_EMAIL, ADMIN_PASSWORD,
-    GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-    MINIO_ENDPOINT, MINIO_PORT,
-    MINIO_ACCESS_KEY, MINIO_SECRET_KEY,
-    MINIO_BUCKET, MINIO_USE_SSL = "false",
+    NODE_ENV,
+    PORT,
+    API_V,
+    ACCESS_TOKEN_SECRET,
+    ACCESS_TOKEN_LIFETIME,
+    REFRESH_TOKEN_SECRET,
+    REFRESH_TOKEN_LIFETIME,
+    DATABASE_URL,
+    DIRECT_URL,
+    ARCJET_API_KEY,
+    ARCJET_ENV,
+    EMAIL_USER,
+    EMAIL_APP_PASSWORD,
+    ADMIN_EMAIL,
+    ADMIN_PASSWORD,
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    MINIO_ENDPOINT,
+    MINIO_PORT,
+    MINIO_ACCESS_KEY,
+    MINIO_SECRET_KEY,
+    MINIO_BUCKET,
+    MINIO_USE_SSL = "false",
 } = process.env;
 
 /**
@@ -33,7 +50,10 @@ const {
  * @type {string[]}
  * @description Parsed list of allowed origins for Cross-Origin Resource Sharing.
  */
-const CORS_ORIGIN: string[] = (process.env.CORS_ORIGIN || "").split(',').map(origin => origin.trim()).filter(origin => origin !== "");
+const CORS_ORIGIN: string[] = (process.env.CORS_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin !== "");
 Logger.log(`Environment: ${NODE_ENV} | Port: ${PORT} | API: ${API_V}`);
 
 /**
@@ -52,7 +72,8 @@ export const ENV_CONFIG = {
     API_V: API_V || "/api/v1",
 
     /** @property {string[]} CORS_ORIGIN - Array of URLs allowed to interact with the API */
-    CORS_ORIGIN: CORS_ORIGIN.length > 0 ? CORS_ORIGIN : ["http://localhost:3000"],
+    CORS_ORIGIN:
+        CORS_ORIGIN.length > 0 ? CORS_ORIGIN : ["http://localhost:3000"],
 
     /** @section Authentication Security */
     ACCESS_TOKEN: {

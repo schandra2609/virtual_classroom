@@ -1,14 +1,19 @@
 /**
  * @file testattempt.controller.ts
  * @module Controllers/Classroom/Examinations
- * @description Manages the execution and grading of examination attempts. 
- * Implements logic for 'OFFICIAL' vs 'PRACTICE' modes, real-time answer 
+ * @description Manages the execution and grading of examination attempts.
+ * Implements logic for 'OFFICIAL' vs 'PRACTICE' modes, real-time answer
  * persistence, and automated scoring for MCQ, MSQ, and NAT questions.
  * @author Sayan Chandra
  */
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
-import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../errors/handler.error.ts";
+import {
+    BadRequestError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+} from "../utils/Error.ts";
 import { prisma } from "../configs/database.config.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
 
@@ -23,18 +28,24 @@ import { dayjs } from "../configs/dayjs.config.ts";
  * @param {AuthenticatedRequest} req - Params: { paperId }.
  * @returns {Promise<void>}
  */
-export const startTestAttempt = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const startTestAttempt = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const { paperId } = req.params as { paperId: string };
         const studentId = req.user?.id as string;
-        
+
         /** @section Validation Fix */
-        if(!paperId?.trim()) {
+        if (!paperId?.trim()) {
             throw new BadRequestError("Paper ID is required.");
         }
 
-        const questionPaper = await prisma.questionPaper.findUnique({ where: { id: paperId } });
-        if(!questionPaper) {
+        const questionPaper = await prisma.questionPaper.findUnique({
+            where: { id: paperId },
+        });
+        if (!questionPaper) {
             throw new NotFoundError("Question paper not found.");
         }
 
@@ -43,7 +54,9 @@ export const startTestAttempt = async (req: AuthenticatedRequest, res: Response,
             throw new ForbiddenError("Test has not started yet.");
         }
         if (questionPaper.status === "PAUSED") {
-            throw new ForbiddenError("Test is currently paused by the instructor.");
+            throw new ForbiddenError(
+                "Test is currently paused by the instructor.",
+            );
         }
         if (questionPaper.status === "CANCELLED") {
             throw new ForbiddenError("Test has been cancelled.");
@@ -52,17 +65,24 @@ export const startTestAttempt = async (req: AuthenticatedRequest, res: Response,
         /** @section Temporal Logic */
         const now = dayjs();
         const liveAt = dayjs(questionPaper.liveAt);
-        const endTime = liveAt.add(questionPaper.duration, 'minute');
-        const isOfficialWindow = questionPaper.status === "LIVE" && now.isBefore(endTime);
+        const endTime = liveAt.add(questionPaper.duration, "minute");
+        const isOfficialWindow =
+            questionPaper.status === "LIVE" && now.isBefore(endTime);
         const attemptType = isOfficialWindow ? "OFFICIAL" : "PRACTICE";
 
         /** @section Anti-Cheat: Official Attempt Enforcement */
-        if(attemptType === "OFFICIAL") {
+        if (attemptType === "OFFICIAL") {
             const existing = await prisma.testAttempt.findFirst({
-                where: { studentId: studentId, questionPaperId: paperId, type: "OFFICIAL" },
+                where: {
+                    studentId: studentId,
+                    questionPaperId: paperId,
+                    type: "OFFICIAL",
+                },
             });
-            if(existing) {
-                throw new ConflictError("You have already completed your OFFICIAL attempt for this test.");
+            if (existing) {
+                throw new ConflictError(
+                    "You have already completed your OFFICIAL attempt for this test.",
+                );
             }
         }
 
@@ -83,19 +103,29 @@ export const startTestAttempt = async (req: AuthenticatedRequest, res: Response,
 /**
  * @async
  * @function submitAnswer
- * @description Persists a student's answer for a specific question. 
- * Uses an 'Upsert' strategy to allow students to change their selection 
+ * @description Persists a student's answer for a specific question.
+ * Uses an 'Upsert' strategy to allow students to change their selection
  * multiple times before final submission.
  * @param {AuthenticatedRequest} req - Body: { questionId, selectedOptionId, numericalAnswer }.
  * @returns {Promise<void>}
  */
-export const submitAnswer = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const submitAnswer = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const { attemptId } = req.params as { attemptId: string };
         const studentId = req.user?.id as string;
-        const { questionId, selectedOptionId, numericalAnswer } = req.body as { questionId: string, selectedOptionId?: string | string[], numericalAnswer?: number };
-        if(![attemptId, questionId].every((field) => field.trim())) {
-            throw new BadRequestError("Attempt ID, question ID are required fields.");
+        const { questionId, selectedOptionId, numericalAnswer } = req.body as {
+            questionId: string;
+            selectedOptionId?: string | string[];
+            numericalAnswer?: number;
+        };
+        if (![attemptId, questionId].every((field) => field.trim())) {
+            throw new BadRequestError(
+                "Attempt ID, question ID are required fields.",
+            );
         }
 
         const attempt = await prisma.testAttempt.findUnique({
@@ -109,12 +139,16 @@ export const submitAnswer = async (req: AuthenticatedRequest, res: Response, nex
 
         /** @section SERVER-SIDE TIMER & STATUS GUARD */
         if (attempt.type === "OFFICIAL") {
-            const { status, liveAt, duration, pauseTime } = attempt.questionPaper;
-            
+            const { status, liveAt, duration, pauseTime } =
+                attempt.questionPaper;
+
             // 1. Check Manual Status
-            if (status.toUpperCase() === "PAUSED") throw new ForbiddenError("Submission blocked: Test is paused.");
-            if (status.toUpperCase() === "CANCELLED") throw new ForbiddenError("Submission blocked: Test cancelled.");
-            if (status.toUpperCase() === "COMPLETED") throw new ForbiddenError("Submission blocked: Test ended.");
+            if (status.toUpperCase() === "PAUSED")
+                throw new ForbiddenError("Submission blocked: Test is paused.");
+            if (status.toUpperCase() === "CANCELLED")
+                throw new ForbiddenError("Submission blocked: Test cancelled.");
+            if (status.toUpperCase() === "COMPLETED")
+                throw new ForbiddenError("Submission blocked: Test ended.");
 
             // 2. Check Server Clock (Hard Deadline)
             const now = new Date().getTime();
@@ -122,8 +156,10 @@ export const submitAnswer = async (req: AuthenticatedRequest, res: Response, nex
             const durationMillis = duration * 60 * 1000;
             const adjustedDeadline = start + durationMillis + pauseTime;
 
-            if (now > (adjustedDeadline + 15000)) {
-                throw new ForbiddenError("Submission blocked: Time limit exceeded.");
+            if (now > adjustedDeadline + 15000) {
+                throw new ForbiddenError(
+                    "Submission blocked: Time limit exceeded.",
+                );
             }
         }
 
@@ -134,14 +170,19 @@ export const submitAnswer = async (req: AuthenticatedRequest, res: Response, nex
 
         /** @section Data Normalization */
         let normalizedOptionId: string | null = null;
-        if(Array.isArray(selectedOptionId)) {
+        if (Array.isArray(selectedOptionId)) {
             normalizedOptionId = selectedOptionId.join(","); // Flatten MSQ array
         } else if (typeof selectedOptionId === "string") {
             normalizedOptionId = selectedOptionId;
         }
 
-        if (normalizedOptionId === null && (numericalAnswer === undefined || numericalAnswer === null)) {
-            throw new BadRequestError("No valid answer provided (selection or numerical).");
+        if (
+            normalizedOptionId === null &&
+            (numericalAnswer === undefined || numericalAnswer === null)
+        ) {
+            throw new BadRequestError(
+                "No valid answer provided (selection or numerical).",
+            );
         }
 
         const savedAnswer = await prisma.answer.upsert({
@@ -183,11 +224,15 @@ export const submitAnswer = async (req: AuthenticatedRequest, res: Response, nex
  * 3. **MSQ**: Matches all correct option IDs (order-independent comparison).
  * @returns {Promise<void>}
  */
-export const submitTestAttempt = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const submitTestAttempt = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const { attemptId } = req.params as { attemptId: string };
         const studentId = req.user?.id as string;
-        if(!attemptId.trim()) {
+        if (!attemptId.trim()) {
             throw new BadRequestError("Attempt ID is required.");
         }
 
@@ -200,9 +245,11 @@ export const submitTestAttempt = async (req: AuthenticatedRequest, res: Response
             include: {
                 answers: true,
                 questionPaper: {
-                    include: { questions: {
-                        include: { options: true },
-                    } },
+                    include: {
+                        questions: {
+                            include: { options: true },
+                        },
+                    },
                 },
             },
         });
@@ -213,25 +260,36 @@ export const submitTestAttempt = async (req: AuthenticatedRequest, res: Response
         let totalScore = 0;
 
         /** @section Grading Algorithm Engine */
-        for(const question of attempt.questionPaper.questions) {
-            const studentAnswer = attempt.answers.find(a => a.questionId === question.id);
+        for (const question of attempt.questionPaper.questions) {
+            const studentAnswer = attempt.answers.find(
+                (a) => a.questionId === question.id,
+            );
             if (!studentAnswer) continue;
 
             let isCorrect = false;
-            
+
             if (question.type.toUpperCase() === "NAT") {
-                isCorrect = studentAnswer.numericalAnswer === question.numericalCorrectAnswer;
+                isCorrect =
+                    studentAnswer.numericalAnswer ===
+                    question.numericalCorrectAnswer;
             } else if (question.type.toUpperCase() === "MCQ") {
-                const correctOption = question.options.find(o => o.isCorrect);
-                isCorrect = studentAnswer.selectedOptionId === correctOption?.id;
+                const correctOption = question.options.find((o) => o.isCorrect);
+                isCorrect =
+                    studentAnswer.selectedOptionId === correctOption?.id;
             } else if (question.type.toUpperCase() === "MSQ") {
-                const correctIds = question.options.filter(o => o.isCorrect).map(o => o.id).sort();
-                const studentIds = (studentAnswer.selectedOptionId || "").split(",").sort();
-                isCorrect = JSON.stringify(correctIds) === JSON.stringify(studentIds);
+                const correctIds = question.options
+                    .filter((o) => o.isCorrect)
+                    .map((o) => o.id)
+                    .sort();
+                const studentIds = (studentAnswer.selectedOptionId || "")
+                    .split(",")
+                    .sort();
+                isCorrect =
+                    JSON.stringify(correctIds) === JSON.stringify(studentIds);
             }
-            if(isCorrect) totalScore += question.marks;
+            if (isCorrect) totalScore += question.marks;
         }
-        
+
         const finalResult = await prisma.testAttempt.update({
             where: { id: attemptId },
             data: { score: totalScore, submittedAt: new Date() },
@@ -253,26 +311,37 @@ export const submitTestAttempt = async (req: AuthenticatedRequest, res: Response
  * @description Retrieves the history of attempts (PRACTICE/OFFICIAL) for a specific paper.
  * @returns {Promise<void>}
  */
-export const getMyAttemptsForPaper = async (req:AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const getMyAttemptsForPaper = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const { paperId } = req.params as { paperId: string };
         const studentId = req.user?.id as string;
-        
+
         /** @section Validation Fix */
-        if(!paperId?.trim()) {
+        if (!paperId?.trim()) {
             throw new BadRequestError("Paper ID is required.");
         }
 
         const attempts = await prisma.testAttempt.findMany({
             where: { studentId: studentId, questionPaperId: paperId },
-            select: { id: true, type: true, score: true, submittedAt: true, createdAt: true },
-            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                type: true,
+                score: true,
+                submittedAt: true,
+                createdAt: true,
+            },
+            orderBy: { createdAt: "desc" },
         });
 
         res.status(200).json({
             success: true,
             data: attempts,
-            message: "Your test attempts for this paper retrieved successfully.",
+            message:
+                "Your test attempts for this paper retrieved successfully.",
         });
     } catch (error) {
         next(error);
@@ -286,12 +355,16 @@ export const getMyAttemptsForPaper = async (req:AuthenticatedRequest, res: Respo
  * Shows question text, student's input, and the correct answers.
  * @returns {Promise<void>}
  */
-export const getAttemptReview = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const getAttemptReview = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> => {
     try {
         const { attemptId } = req.params as { attemptId: string };
         const userId = req.user?.id as string;
         const userRole = req.membership?.role as string;
-        if(!attemptId?.trim()) {
+        if (!attemptId?.trim()) {
             throw new BadRequestError("Attempt ID is required.");
         }
 
@@ -300,9 +373,11 @@ export const getAttemptReview = async (req: AuthenticatedRequest, res: Response,
             include: {
                 answers: true,
                 questionPaper: {
-                    include: { questions: {
-                        include: { options: true }
-                    } },
+                    include: {
+                        questions: {
+                            include: { options: true },
+                        },
+                    },
                 },
             },
         });
@@ -312,23 +387,34 @@ export const getAttemptReview = async (req: AuthenticatedRequest, res: Response,
 
         /** @section RBAC Logic: Ensure user is the owner or classroom staff */
         const isOwner = attempt.studentId === userId;
-        const isTutor = ['CREATOR', 'CO_TUTOR'].includes(userRole);
+        const isTutor = ["CREATOR", "CO_TUTOR"].includes(userRole);
         if (!isOwner && !isTutor) {
             throw new ForbiddenError("Access denied.");
         }
 
-         /** @section Feedback Map Generation */
-        const reviewData = attempt.questionPaper.questions.map(q => {
-            const studentAns = attempt.answers.find(a => a.questionId === q.id);
+        /** @section Feedback Map Generation */
+        const reviewData = attempt.questionPaper.questions.map((q) => {
+            const studentAns = attempt.answers.find(
+                (a) => a.questionId === q.id,
+            );
             return {
-                id: q.id, text: q.text, type: q.type, marks: q.marks,
-                correctAnswer: q.type.toUpperCase() === "NAT"
-                                ? q.numericalCorrectAnswer
-                                : q.options.filter(o => o.isCorrect).map(o => o.id),
-                studentAnswer: q.type.toUpperCase() === "NAT"
-                                ? studentAns?.numericalAnswer
-                                : studentAns?.selectedOptionId, // MSQ returns csv string
-                options: q.options.map(o => ({ id: o.id, text: o.text, isCorrect: o.isCorrect })),
+                id: q.id,
+                text: q.text,
+                type: q.type,
+                marks: q.marks,
+                correctAnswer:
+                    q.type.toUpperCase() === "NAT"
+                        ? q.numericalCorrectAnswer
+                        : q.options.filter((o) => o.isCorrect).map((o) => o.id),
+                studentAnswer:
+                    q.type.toUpperCase() === "NAT"
+                        ? studentAns?.numericalAnswer
+                        : studentAns?.selectedOptionId, // MSQ returns csv string
+                options: q.options.map((o) => ({
+                    id: o.id,
+                    text: o.text,
+                    isCorrect: o.isCorrect,
+                })),
             };
         });
 

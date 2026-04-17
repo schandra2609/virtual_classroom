@@ -1,70 +1,45 @@
 /**
  * @file Logger.ts
  * @module Utils/Logger
- * @description Wrapper around console methods using Chalk for colorized terminal output.
- * Facilitates easier debugging and logs monitoring during development.
+ * @description Centralized logging utility powered by Pino.
+ * Uses structured JSON logging in production for performance and indexing,
+ * and pino-pretty in development for human-readable terminal output.
+ * @author Sayan Chandra
  */
-import chalk from 'chalk';
+import pino from "pino";
 
-/** 
- * @typedef {function(string): string} Highlighter 
- * @description A Chalk function that applies color/style to a string.
- */
-type Highlighter = (text: string) => string;
+const isDev = process.env.NODE_ENV === "development";
 
 /**
- * @class Logger
- * @description - Facilitates with colored logs for different kind of data.
- * Types: Log | Error | Warn | Info | Debug
+ * Configure the core Pino instance
  */
-export default class Logger {
-    /**
-     * @method log
-     * @description Standard operational log. Output in Bold Blue.
-     * @param {string} message - Content to log.
-     * @param {Highlighter} [highlighter] - Optional chalk style override.
-     */
-    static log(message: string, highlighter: Highlighter = chalk.blueBright.bold): void {
-        console.log(highlighter(`[LOG] ${message}`));
-    }
+export const pinoInstance = pino({
+    level: isDev ? "debug" : "info",
+    ...(isDev && {
+        transport: {
+            target: "pino-pretty",
+            options: {
+                colorize: true,
+                translateTime: "SYS:standard", // E.g., 2026-04-09 21:15:00.000 +0530
+                ignore: "pid,hostname",        // Keeps the terminal clean
+                messageFormat: "{msg}",
+            },
+        },
+    }),
+});
 
-    /**
-     * @method error
-     * @description Critical error log. Output in Bold Red.
-     * @param {string} message - Error description.
-     * @param {Highlighter} [highlighter] - Optional chalk style override.
-     */
-    static error(message: string, highlighter: Highlighter = chalk.redBright.bold): void {
-        console.error(highlighter(`[ERROR] ${message}`));
-    }
-
-    /**
-     * @method warn
-     * @description Warning log for non-breaking issues. Output in Italic Yellow.
-     * @param {string} message - Warning description.
-     * @param {Highlighter} [highlighter] - Optional chalk style override.
-     */
-    static warn(message: string, highlighter: Highlighter = chalk.yellowBright.italic): void {
-        console.warn(highlighter(`[WARN] ${message}`));
-    }
-
-    /**
-     * @method info
-     * @description Informational log for system events. Output in Italic Cyan.
-     * @param {string} message - Information content.
-     * @param {Highlighter} [highlighter] - Optional chalk style override.
-     */
-    static info(message: string, highlighter: Highlighter = chalk.cyanBright.italic): void {
-        console.info(highlighter(`[INFO] ${message}`));
-    }
-
-    /**
-     * @method debug
-     * @description Verbose logging for tracing logic flow. Output in Italic Magenta.
-     * @param {string} message - Trace data.
-     * @param {Highlighter} [highlighter] - Optional chalk style override.
-     */
-    static debug(message: string, highlighter: Highlighter = chalk.magentaBright.italic): void {
-        console.debug(highlighter(`[DEBUG] ${message}`));
-    }
+/**
+ * Adapter interface to maintain backwards compatibility with the existing codebase.
+ * This prevents needing to rewrite Logger.log() across the entire project.
+ */
+const Logger = {
+    // We map 'log' to 'info' because Pino doesn't have a native 'log' level
+    log: (msg: string, ...args: any[]) => pinoInstance.info(msg, ...args),
+    info: (msg: string, ...args: any[]) => pinoInstance.info(msg, ...args),
+    error: (msg: string | Error, ...args: any[]) => pinoInstance.error(msg, ...args),
+    warn: (msg: string, ...args: any[]) => pinoInstance.warn(msg, ...args),
+    debug: (msg: string, ...args: any[]) => pinoInstance.debug(msg, ...args),
+    fatal: (msg: string | Error, ...args: any[]) => pinoInstance.fatal(msg, ...args),
 };
+
+export default Logger;

@@ -10,7 +10,6 @@
 import { Router } from "express";
 import * as memberController from "../controllers/member.controller.ts";
 
-
 /**
  * @constant router
  * @type {Router}
@@ -23,23 +22,22 @@ const router: Router = Router({ mergeParams: true });
  * @description Fetches all members (or filtered by PENDING/APPROVED status).
  * @access Private (Classroom Tutor)
  */
-router.route("/")
-    .get(memberController.getClassroomMembers as any);
+router.route("/").get(memberController.getClassroomMembers as any);
 
 /**
  * @route DELETE /api/v1/classrooms/:classroomId/members/:memberId
  * @description Expels a member from the classroom.
  * @access Private (Classroom Tutor)
  */
-router.route("/:memberId")
-    .delete(memberController.removeMember as any);
+router.route("/:memberId").delete(memberController.removeMember as any);
 
 /**
  * @route PATCH /api/v1/classrooms/:classroomId/members/:studentId/approve
  * @description Approves a student's pending join request.
  * @access Private (Classroom Tutor)
  */
-router.route("/:studentId/approve")
+router
+    .route("/:studentId/approve")
     .patch(memberController.approveStudent as any);
 
 /**
@@ -50,5 +48,14 @@ router.route("/:studentId/approve")
 router
     .route("/:studentId/payment")
     .patch(memberController.updateStudentPayment as any);
+
+/**
+ * @route GET /api/v1/classrooms/:classroomId/members/:studentId/performance
+ * @description Fetches the performance data for a specific student to render analytics.
+ * @access Private (Classroom Tutor - Enforced by classroom.routes.ts mount)
+ */
+router
+    .route("//:studentId/performance")
+    .get(memberController.getStudentPerformance as any);
 
 export default router;

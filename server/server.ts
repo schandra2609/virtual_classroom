@@ -28,41 +28,38 @@ import Logger from "./src/utils/Logger.ts";
  * Logic:
  * - Checks if an account with type 'ADMINISTRATOR' exists using the configured ADMIN_EMAIL.
  * - If missing, creates a new record with a 100-year verification validity and
- *   pre-verified status for both email and tutor roles.
+ * pre-verified status for the email.
  * - If present, logs an info message to confirm the admin layer is ready.
  * @returns {Promise<void>}
  * @throws {Error} If database write or password hashing fails.
  */
 const seedAdmin = async (): Promise<void> => {
-  try {
-    const existingAdmin = await prisma.user.findUnique({
-      where: { email: ENV_CONFIG.ADMIN.EMAIL, accountType: "ADMINISTRATOR" },
-    });
+    try {
+        const existingAdmin = await prisma.user.findUnique({
+            where: { email: ENV_CONFIG.ADMIN.EMAIL, accountType: "ADMINISTRATOR" },
+        });
 
-    if (existingAdmin) {
-      Logger.info("Administrator account has been updated");
-    } else {
-      const hashedPassword = await bcrypt.hash(ENV_CONFIG.ADMIN.PASSWORD!, 10);
-      await prisma.user.create({
-        data: {
-          email: ENV_CONFIG.ADMIN.EMAIL,
-          password: hashedPassword,
-          accountType: "ADMINISTRATOR",
-          fullName: "Virtual Classroom Admin",
-          isEmailVerified: true,
-          // Set expiry to a century from now for the root admin
-          emailVerificationExpiry: dayjs().add(100, "year").toDate(),
-          tutorVerificationStatus: "VERIFIED",
-          tutorStatusUpdatedAt: new Date(),
-        },
-      });
-      Logger.log("Administrator account has been created");
+        if (existingAdmin) {
+            Logger.info("Administrator account has been updated");
+        } else {
+            const hashedPassword = await bcrypt.hash(ENV_CONFIG.ADMIN.PASSWORD!, 10);
+            await prisma.user.create({
+                data: {
+                    email: ENV_CONFIG.ADMIN.EMAIL,
+                    password: hashedPassword,
+                    accountType: "ADMINISTRATOR",
+                    fullName: "Virtual Classroom Admin",
+                    isEmailVerified: true,
+                    emailVerificationExpiry: dayjs().add(100, "year").toDate(),
+                },
+            });
+            Logger.log("Administrator account has been created");
+        }
+    } catch (error) {
+        Logger.error("Error seeding administrator.");
+        Logger.debug(error instanceof Error ? error.message : String(error));
+        process.exit(1);
     }
-  } catch (error) {
-    Logger.error("Error seeding administrator.");
-    Logger.debug(error instanceof Error ? error.message : String(error));
-    process.exit(1);
-  }
 };
 
 /**
@@ -78,42 +75,40 @@ const seedAdmin = async (): Promise<void> => {
  * @returns {Promise<void>}
  */
 const startServer = async (): Promise<void> => {
-  try {
-    // Step 1: Database
-    await prisma.$connect();
-    Logger.log("Database connected successfully.");
+    try {
+        // Step 1: Database
+        await prisma.$connect();
+        Logger.log("Database connected successfully.");
 
-    // Step 2: Object Storage
-    await initializeStorage();
+        // Step 2: Object Storage
+        await initializeStorage();
 
-    // Step 3: Mail Service
-    await verifyTransporter();
+        // Step 3: Mail Service
+        await verifyTransporter();
 
-    // Step 4: Arcjet Connection
-    await verifyArcjetConnection();
+        // Step 4: Arcjet Connection
+        await verifyArcjetConnection();
 
-    // Step 5: System Seeding
-    await seedAdmin();
+        // Step 5: System Seeding
+        await seedAdmin();
 
-    // Step 6: Start Listening
-    const httpServer = app.listen(ENV_CONFIG.PORT, "0.0.0.0", () => {
-      Logger.log(
-        chalk.greenBright.bold.italic(">>> ") +
-          chalk.bgGreenBright.black.italic.bold(
-            ` Server running in ${ENV_CONFIG.NODE_ENV} mode on port ${ENV_CONFIG.PORT} `,
-          ),
-      );
-    });
+        // Step 6: Start Listening
+        const httpServer = app.listen(ENV_CONFIG.PORT, "0.0.0.0", () => {
+            Logger.log(
+                chalk.greenBright.bold.italic(">>> ") +
+                chalk.bgGreenBright.black.italic.bold(` Server running in ${ENV_CONFIG.NODE_ENV} mode on port ${ENV_CONFIG.PORT} `,),
+            );
+        });
 
-    // Step 7: Initialize Socket.io
-    initSocket(httpServer);
-  } catch (error) {
-    // Clean up on failure
-    await prisma.$disconnect();
-    Logger.error("Shutting down server due to startup failure.");
-    Logger.debug(error instanceof Error ? error.message : String(error));
-    process.exit(1);
-  }
+        // Step 7: Initialize Socket.io
+        initSocket(httpServer);
+    } catch (error) {
+        // Clean up on failure
+        await prisma.$disconnect();
+        Logger.error("Shutting down server due to startup failure.");
+        Logger.debug(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+    }
 };
 
 /**
@@ -127,10 +122,10 @@ const startServer = async (): Promise<void> => {
  * @description Handles Promise rejections that aren't caught in local try-catch blocks.
  */
 process.on("unhandledRejection", async (error) => {
-  await prisma.$disconnect();
-  Logger.error("Critical: Unhandled Promise Rejection.");
-  Logger.debug(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+    await prisma.$disconnect();
+    Logger.error("Critical: Unhandled Promise Rejection.");
+    Logger.debug(error instanceof Error ? error.message : String(error));
+    process.exit(1);
 });
 
 /**
@@ -138,10 +133,10 @@ process.on("unhandledRejection", async (error) => {
  * @description Handles synchronous errors that bubble up to the process level.
  */
 process.on("uncaughtException", async (error) => {
-  await prisma.$disconnect();
-  Logger.error("Critical: Uncaught Exception.");
-  Logger.debug(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+    await prisma.$disconnect();
+    Logger.error("Critical: Uncaught Exception.");
+    Logger.debug(error instanceof Error ? error.message : String(error));
+    process.exit(1);
 });
 
 /**
@@ -149,12 +144,12 @@ process.on("uncaughtException", async (error) => {
  * @description Triggered by (Ctrl+C). Ensures Prisma disconnects gracefully.
  */
 process.on("SIGINT", async () => {
-  await prisma.$disconnect();
-  Logger.log(
-    "\nSIGINT received: Prisma Client disconnected. Shutting down.",
-    chalk.redBright.italic,
-  );
-  process.exit(0);
+    await prisma.$disconnect();
+    Logger.log(
+        "\nSIGINT received: Prisma Client disconnected. Shutting down.",
+        chalk.redBright.italic,
+    );
+    process.exit(0);
 });
 
 /**
@@ -162,12 +157,12 @@ process.on("SIGINT", async () => {
  * @description Triggered by process managers (like PM2 or Docker). Ensures clean shutdown.
  */
 process.on("SIGTERM", async () => {
-  await prisma.$disconnect();
-  Logger.log(
-    "\nSIGTERM received: Prisma Client disconnected. Shutting down.",
-    chalk.redBright.italic,
-  );
-  process.exit(0);
+    await prisma.$disconnect();
+    Logger.log(
+        "\nSIGTERM received: Prisma Client disconnected. Shutting down.",
+        chalk.redBright.italic,
+    );
+    process.exit(0);
 });
 
 // Execute the bootstrap sequence

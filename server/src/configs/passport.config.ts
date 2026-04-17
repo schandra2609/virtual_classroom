@@ -35,10 +35,15 @@ export const configureGoogleStrategy = (passport: PassportStatic): void => {
              * @param {Profile} profile - The user data returned by Google.
              * @param {VerifyCallback} done - Signal Passport to proceed.
              */
-            (_accessToken: string, _refreshToken: string, profile: Profile, done: VerifyCallback) => {
+            (
+                _accessToken: string,
+                _refreshToken: string,
+                profile: Profile,
+                done: VerifyCallback,
+            ) => {
                 // At this stage, the profile is passed to the Auth Controller
                 return done(null, profile);
-            }
-        )
+            },
+        ),
     );
 };

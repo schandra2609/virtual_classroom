@@ -10,13 +10,15 @@ import express from "express";
 import type { Application } from "express";
 import cors from "cors";
 import helmet from "helmet";
-import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import passport from "passport";
 import { configureGoogleStrategy } from "./configs/passport.config.ts";
 import { globalErrorHandler } from "./middlewares/error.middleware.ts";
 import rootRouter from "./routes/root.routes.ts";
 import { ENV_CONFIG } from "./configs/env.config.ts";
+import pinoHttp from "pino-http";
+import { pinoInstance } from "./utils/Logger.ts";
+import type { IncomingMessage, ServerResponse } from "http";
 
 /**
  * @constant app
@@ -32,7 +34,7 @@ const app: Application = express();
  * Setting it to '1' trusts the first hop (the immediate proxy).
  */
 if (ENV_CONFIG.NODE_ENV === "production") {
-  app.set("trust proxy", 1);
+    app.set("trust proxy", 1);
 }
 
 /**
@@ -51,20 +53,20 @@ app.use(helmet());
  * 'credentials: true' is mandatory for the browser to send/receive HttpOnly cookies (Refresh Tokens).
  */
 app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || ENV_CONFIG.CORS_ORIGIN.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.error(`[CORS] Rejected origin: ${origin}`);
-        console.info(
-          `[CORS] Allowed origins: ${ENV_CONFIG.CORS_ORIGIN.join(", ")}`,
-        );
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-  }),
+    cors({
+        origin: (origin, callback) => {
+            if (!origin || ENV_CONFIG.CORS_ORIGIN.includes(origin)) {
+                callback(null, true);
+            } else {
+                console.error(`[CORS] Rejected origin: ${origin}`);
+                console.info(
+                    `[CORS] Allowed origins: ${ENV_CONFIG.CORS_ORIGIN.join(", ")}`,
+                );
+                callback(new Error("Not allowed by CORS"));
+            }
+        },
+        credentials: true,
+    }),
 );
 
 /**
@@ -101,12 +103,28 @@ app.use(express.static("public"));
  */
 
 /**
- * @description HTTP request logger middleware.
- * 'dev' provides concise, colored output for development debugging.
+ * @description HTTP request logger middleware powered by Pino.
+ * Automatically logs request details, response times, and status codes.
  */
-if (ENV_CONFIG.NODE_ENV === "development") {
-  app.use(morgan("dev"));
-}
+app.use(
+    (pinoHttp as any)({
+        logger: pinoInstance,
+        // Optional: Custom log level logic based on HTTP status codes
+        customLogLevel: function (req: IncomingMessage, res: ServerResponse, err?: Error) {
+            if (res.statusCode >= 400 && res.statusCode < 500) {
+                return 'warn';
+            } else if (res.statusCode >= 500 || err) {
+                return 'error';
+            }
+            return 'info';
+        },
+        // Keeps development logs concise by hiding heavy request/response headers
+        serializers: ENV_CONFIG.NODE_ENV === "development" ? {
+            req: (req: IncomingMessage) => ({ method: req.method, url: req.url }),
+            res: (res: ServerResponse) => ({ statusCode: res.statusCode }),
+        } : undefined
+    })
+);
 
 /**
  * @description Passport.js initialization for OAuth 2.0.

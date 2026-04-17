@@ -36,7 +36,8 @@ export const initSocket = (httpServer: HttpServer): void => {
      * @description Verifies the JWT token sent in the handshake auth payload.
      */
     io.use((socket, next) => {
-        const token = socket.handshake.auth.token || socket.handshake.headers.token;
+        const token =
+            socket.handshake.auth.token || socket.handshake.headers.token;
 
         if (!token) {
             return next(new Error("Authentication error: Token not provided"));
@@ -48,13 +49,17 @@ export const initSocket = (httpServer: HttpServer): void => {
             socket.data.user = decoded;
             next();
         } catch (error) {
-            Logger.error(`Socket authentication failed: ${error instanceof Error ? error.message : String(error)}`);
+            Logger.error(
+                `Socket authentication failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
             next(new Error("Authentication error: Invalid or expired token"));
         }
     });
 
     io.on("connection", (socket) => {
-        Logger.info(`New client connected: ${socket.id} (User: ${socket.data.user?.id})`);
+        Logger.info(
+            `New client connected: ${socket.id} (User: ${socket.data.user?.id})`,
+        );
         socket.on("disconnect", () => {
             Logger.info(`Client disconnected: ${socket.id}`);
         });

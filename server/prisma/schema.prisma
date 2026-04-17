@@ -54,7 +54,7 @@ enum QuestionPaperStatus {
   COMPLETED
 }
 
-enum TutorVerificationStatus {
+enum TutorApplicationStatus {
   PENDING
   VERIFIED
   REJECTED
@@ -78,11 +78,6 @@ model User {
   verificationOtp           String?
   verificationOtpExpiry     DateTime?
 
-  tutorVerificationStatus   TutorVerificationStatus     @default(PENDING)
-  tutorStatusUpdatedAt      DateTime?
-  tutorQualificationUrl     String?
-  tutorRejectionReason      String?
-
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -95,6 +90,22 @@ model User {
   testAttempts            TestAttempt[]
   approvedMemberships     ClassroomMember[]       @relation("ApprovedByTutor")
   classroomInvitations    ClassroomInvitation[]
+  tutorApplications         TutorApplication[]
+}
+
+model TutorApplication {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  status            TutorApplicationStatus @default(PENDING)
+  documentUrl       String
+  rejectionReason   String?
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([userId])
 }
 
 model Classroom {
@@ -248,6 +259,7 @@ model Assignment {
   title         String
   instruction   String        @db.Text
   deadline      DateTime
+  maxScore      Int           @default(100)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -264,13 +276,14 @@ model Submission {
   id              String          @id @default(cuid())
   submittedAt     DateTime        @default(now())
   content         String?         @db.Text
+  marksObtained   Float?
 
   assignmentId    String
   studentId       String
   assignment      Assignment      @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   student         User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  attachments       Attachment[]
+  attachments     Attachment[]
 
   @@unique([assignmentId, studentId])
 }

@@ -86,9 +86,15 @@ export const notifyNewComment = (classroomId: string, data: any) => {
  * @param {string} paperId - The specific test.
  * @param {string} status - LIVE | PAUSED | CANCELLED | COMPLETED
  */
-export const notifyTestStatusChange = (classroomId: string, paperId: string, status: string) => {
+export const notifyTestStatusChange = (
+    classroomId: string,
+    paperId: string,
+    status: string,
+) => {
     if (io) {
         io.to(classroomId).emit("test_status_change", { paperId, status });
-        Logger.info(`Test ${paperId} status changed to ${status} in room ${classroomId}`);
+        Logger.info(
+            `Test ${paperId} status changed to ${status} in room ${classroomId}`,
+        );
     }
 };

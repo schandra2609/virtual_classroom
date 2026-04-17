@@ -2,18 +2,23 @@
  * @file arcjet.config.ts
  * @module Config/Security
  * @description Centralized security configuration using the Arcjet engine.
- * This module establishes a multi-layered defense strategy (WAF, Bot Management, 
+ * This module establishes a multi-layered defense strategy (WAF, Bot Management,
  * Rate Limiting, and PII Protection) to secure the Virtual Classroom API at the edge.
  * @author Sayan Chandra
  */
-import arcjet, { shield, detectBot, fixedWindow, sensitiveInfo } from "@arcjet/node";
+import arcjet, {
+    shield,
+    detectBot,
+    fixedWindow,
+    sensitiveInfo,
+} from "@arcjet/node";
 import { ENV_CONFIG } from "./env.config.ts";
 import Logger from "../utils/Logger.ts";
 
 /**
  * @constant ajConfig
- * @description The primary Arcjet security instance. 
- * It uses the request's source IP as the primary characteristic for tracking and 
+ * @description The primary Arcjet security instance.
+ * It uses the request's source IP as the primary characteristic for tracking and
  * enforcement across the following security layers:
  * 1. **Shield (WAF)**: Protects against common web vulnerabilities (SQLi, XSS, etc).
  * 2. **Bot Detection**: Distinguishes between automated threats and beneficial crawlers.
@@ -26,11 +31,11 @@ export const ajConfig = arcjet({
 
     /** @property {string[]} characteristics - Fingerprinting method (Source IP Tracking) */
     characteristics: ["ip.src"] as const,
-    
+
     rules: [
         /**
          * @section Shield Rule
-         * @description Advanced protection layer that analyzes request patterns 
+         * @description Advanced protection layer that analyzes request patterns
          * to block common OWASP Top 10 attacks like SQL Injection and Cross-Site Scripting.
          */
         shield({
@@ -39,15 +44,15 @@ export const ajConfig = arcjet({
 
         /**
          * @section Bot Detection Rule
-         * @description Identifies automated traffic. Configured to allow 'Good' bots 
+         * @description Identifies automated traffic. Configured to allow 'Good' bots
          * (Search Engines, Status Monitors) while blocking unauthorized scrapers.
          */
         detectBot({
             mode: "LIVE" as const,
             allow: [
-                "CATEGORY:SEARCH_ENGINE",   // Allows Google, Bing, etc.
-                "CATEGORY:MONITOR",         // Allows Uptime monitors
-                "CATEGORY:PREVIEW"          // Allows social media link previews
+                "CATEGORY:SEARCH_ENGINE", // Allows Google, Bing, etc.
+                "CATEGORY:MONITOR", // Allows Uptime monitors
+                "CATEGORY:PREVIEW", // Allows social media link previews
             ] as const,
         }),
 
@@ -64,16 +69,12 @@ export const ajConfig = arcjet({
 
         /**
          * @section Sensitive Info Rule
-         * @description Data Loss Prevention (DLP) layer. Scans incoming data for 
+         * @description Data Loss Prevention (DLP) layer. Scans incoming data for
          * Personally Identifiable Information (PII) to ensure regulatory compliance.
          */
         sensitiveInfo({
             mode: "LIVE" as const,
-            deny: [
-                "CREDIT_CARD_NUMBER",
-                "EMAIL",
-                "PHONE_NUMBER"
-            ] as const,
+            deny: ["CREDIT_CARD_NUMBER", "EMAIL", "PHONE_NUMBER"] as const,
         }),
     ],
 });
@@ -83,13 +84,17 @@ export const ajConfig = arcjet({
  * @function verifyArcjetConnection
  * @description Validates the presence of the Arcjet API key on server startup.
  * Provides a proactive warning in the logs if the security engine is unconfigured.
- * 
+ *
  * @returns {Promise<void>}
  */
 export const verifyArcjetConnection = async (): Promise<void> => {
     if (!ENV_CONFIG.ARCJET.API_KEY || ENV_CONFIG.ARCJET.API_KEY === "") {
-        Logger.warn("Arcjet: ARCJET_API_KEY is missing. Edge security rules are inactive.");
+        Logger.warn(
+            "Arcjet: ARCJET_API_KEY is missing. Edge security rules are inactive.",
+        );
     } else {
-        Logger.log("🛡️ Arcjet: Security engine initialized and monitoring traffic.");
+        Logger.log(
+            "🛡️ Arcjet: Security engine initialized and monitoring traffic.",
+        );
     }
 };

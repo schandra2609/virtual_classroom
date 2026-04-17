@@ -23,29 +23,38 @@ const router: Router = Router({ mergeParams: true });
  * @route /api/v1/classrooms/:classroomId/announcements
  * @access Private (Classroom Members)
  */
-router.route("/")
-    /** 
-     * @route GET / 
+router
+    .route("/")
+    /**
+     * @route GET /
      * @description Retrieve all announcements for the classroom feed.
      */
     .get(announcementController.getAnnouncements as any)
-    /** 
-     * @route POST / 
+    /**
+     * @route POST /
      * @description Create a new announcement. Restricted to classroom staff.
      * Integrates Multer to handle up to 5 concurrent file attachments.
      */
-    .post(isClassroomTutor as any, upload.array("attachments", 5), announcementController.createAnnouncement as any);
+    .post(
+        isClassroomTutor as any,
+        upload.array("attachments", 5),
+        announcementController.createAnnouncement as any,
+    );
 
 /**
  * @route /api/v1/classrooms/:classroomId/announcements/:announcementId
  * @access Private (Author or Creator)
  */
-router.route("/:announcementId")
-    /** 
-     * @route DELETE /:announcementId 
+router
+    .route("/:announcementId")
+    /**
+     * @route DELETE /:announcementId
      * @description Permanently removes an announcement and its storage assets.
      */
-    .delete(isClassroomTutor as any, announcementController.deleteAnnouncement as any);
+    .delete(
+        isClassroomTutor as any,
+        announcementController.deleteAnnouncement as any,
+    );
 
 /**
  * @section Sub-Resource Nesting

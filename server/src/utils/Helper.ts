@@ -1,7 +1,7 @@
 /**
  * @file Helper.ts
  * @module Utils/Helpers
- * @description Utility class containing static methods for string manipulation, 
+ * @description Utility class containing static methods for string manipulation,
  * validation, and common algorithm tasks used across the application.
  */
 
@@ -18,10 +18,13 @@ export default class Helper {
      * @returns {string} The generated random code.
      */
     static generateRandomCode = (length: number): string => {
-        const charPool = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        let code = '';
+        const charPool =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        let code = "";
         for (let i = 0; i < length; i++)
-            code += charPool.charAt(Math.floor(Math.random() * charPool.length));
+            code += charPool.charAt(
+                Math.floor(Math.random() * charPool.length),
+            );
 
         return code;
     };
@@ -34,18 +37,20 @@ export default class Helper {
      * @returns {boolean} True if the password meets security standards.
      */
     static isPasswordStrong = (password: string): boolean =>
-        new RegExp(/^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()])(?=.{8,})/).test(password);
+        new RegExp(
+            /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()])(?=.{8,})/,
+        ).test(password);
 
     /**
      * @method sleep
      * @async
-     * @description Promisified timeout to pause execution. 
+     * @description Promisified timeout to pause execution.
      * Used mainly in testing or simulating network latency.
      * @param {number} ms - Milliseconds to sleep.
      * @returns {Promise<void>}
      */
     static sleep = (ms: number): Promise<void> =>
-        new Promise(resolve => setTimeout(resolve, ms));
+        new Promise((resolve) => setTimeout(resolve, ms));
 
     /**
      * @method formatDate
@@ -55,8 +60,8 @@ export default class Helper {
      */
     static formatDate = (date: Date): string => {
         const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
         return `${year}-${month}-${day}`;
     };
 
@@ -67,9 +72,9 @@ export default class Helper {
      * @returns {string} Formatted timestamp string.
      */
     static formatDateTime = (date: Date): string => {
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        const seconds = String(date.getSeconds()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, "0");
+        const minutes = String(date.getMinutes()).padStart(2, "0");
+        const seconds = String(date.getSeconds()).padStart(2, "0");
         return `${this.formatDate(date)}T${hours}:${minutes}:${seconds}`;
     };
 
@@ -77,5 +82,5 @@ export default class Helper {
         const start = new Date(paper.liveAt).getTime();
         const durationMillis = paper.duration * 60 * 1000;
         return new Date(start + durationMillis + paper.pauseTime);
-    }
+    };
 }
