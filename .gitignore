@@ -10,6 +10,8 @@ server/coverage/
 
 # Production
 server/dist/
+server/build/
+client/dist/
 client/build/
 dist/
 dist-ssr/
@@ -43,5 +45,5 @@ yarn-error.log*
 *.pdf
 *.md
 !README.md
-/server/exports
+/**/exports
 docs/
