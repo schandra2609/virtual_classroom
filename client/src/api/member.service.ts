@@ -4,7 +4,6 @@ import type { ApiResponse } from "@/api/types";
 export const memberService = {
     /**
      * @route GET /api/v1/classrooms/:classroomId/members
-     * @description Fetches all members (or filtered by PENDING/APPROVED status)
      */
     getClassroomMembers: async (classroomId: string, status?: 'APPROVED' | 'PENDING' | 'REJECTED') => {
         const response = await API.get(`/classrooms/${classroomId}/members${status ? `?status=${status}` : ''}`);
@@ -13,16 +12,14 @@ export const memberService = {
 
     /**
      * @route DELETE /api/v1/classrooms/:classroomId/members/:memberId
-     * @description Expels a member from the classroom
      */
-    removeMember: async (classroomId: string, userId: string) => {
-        const response = await API.delete(`/classrooms/${classroomId}/members/${userId}`);
+    removeMember: async (classroomId: string, memberId: string) => {
+        const response = await API.delete(`/classrooms/${classroomId}/members/${memberId}`);
         return response.data;
     },
 
     /**
      * @route PATCH /api/v1/classrooms/:classroomId/members/:studentId/approve
-     * @description Approves a student's pending join request
      */
     approveStudent: async (classroomId: string, studentId: string): Promise<ApiResponse<null>> => {
         const response = await API.patch(`/classrooms/${classroomId}/members/${studentId}/approve`);
@@ -31,10 +28,22 @@ export const memberService = {
 
     /**
      * @route PATCH /api/v1/classrooms/:classroomId/members/:studentId/payment
-     * @description Updates the fee-validity period (expiry date) for a student
+     * @description Updates the fee-validity period using duration in months
      */
-    updateMembershipStatus: async (classroomId: string, userId: string, status: 'APPROVED' | 'REJECTED') => {
-        const response = await API.patch(`/classrooms/${classroomId}/members/${userId}`, { status });
+    updateStudentPayment: async (classroomId: string, studentId: string, durationInMonths: number) => {
+        const response = await API.patch(`/classrooms/${classroomId}/members/${studentId}/payment`, { durationInMonths });
+        return response.data;
+    },
+
+    /**
+     * @route GET /api/v1/classrooms/:classroomId/members/:studentId/performance
+     * @description Fetches the performance data for the Recharts line plot
+     */
+    getStudentPerformance: async (classroomId: string, studentId: string): Promise<ApiResponse<{
+        studentName: string;
+        performanceData: Array<{ testName: string; studentScore: number; highestScore: number; }>
+    }>> => {
+        const response = await API.get(`/classrooms/${classroomId}/members/${studentId}/performance`);
         return response.data;
     }
 };

@@ -18,6 +18,7 @@ import Landing from "@/features/marketing/Landing";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import CBTBuilder from "@/features/classroom/CBTBuilder";
+import CBTPlayer from "@/features/classroom/CBTPlayer";
 import ClassroomsDashboard from "@/features/classroom/ClassroomDashboard";
 import ClassroomDetails from "@/features/classroom/ClassroomDetails";
 import GradingDashboard from "@/features/classroom/GradingDashboard";
@@ -74,6 +75,7 @@ const App = () => {
                             <Route index element={<ClassroomsDashboard />} />
                             <Route path="classrooms/:id" element={<ClassroomDetails />} />
                             <Route path="cbt-builder/:classroomId/:paperId" element={<CBTBuilder />} />
+                            <Route path="cbt-player/:classroomId/:paperId" element={<CBTPlayer />} />
                             <Route path="profile" element={<UserProfile />} />
                             <Route path="applications" element={<TutorApplications />} />
                             <Route path="grade/:classroomId/:assignmentId" element={<GradingDashboard />} />

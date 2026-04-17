@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FiMoreVertical, FiTrendingUp as ChartIcon, FiCheck, FiX, FiClock } from "react-icons/fi";
+import { FiMoreVertical, FiTrendingUp as ChartIcon, FiCheck, FiX, FiClock, FiCreditCard } from "react-icons/fi";
 import { MdRemoveModerator } from "react-icons/md";
 import { toast } from "sonner";
 
@@ -54,30 +54,56 @@ const PeopleTab = ({ classroom }: PeopleTabProps) => {
         fetchRoster();
     }, [classroom.id, user?.accountType]);
 
-    const handleActionRequest = async (studentId: string, action: 'APPROVED' | 'REJECTED') => {
+    // 🚨 Fixed: Specific Approval Handler
+    const handleApproveStudent = async (studentId: string) => {
         try {
-            await memberService.updateMembershipStatus(classroom.id, studentId, action);
+            await memberService.approveStudent(classroom.id, studentId);
             
-            // Find the student in the pending list
+            // Find and move the student in the UI
             const studentToMove = pendingMembers.find(m => m.userId === studentId);
-            
-            // Remove from pending UI
             setPendingMembers(prev => prev.filter(m => m.userId !== studentId));
 
-            if (action === 'APPROVED' && studentToMove) {
-                // Move to approved UI instantly
+            if (studentToMove) {
                 setApprovedMembers(prev => [...prev, { ...studentToMove, membershipStatus: 'APPROVED' }]);
                 toast.success(`${studentToMove.user?.fullName} has been approved.`);
-            } else {
-                toast.info("Request rejected.");
             }
         } catch (error: any) {
-            toast.error(error.response?.data?.message || `Failed to ${action.toLowerCase()} request.`);
+            toast.error(error.response?.data?.message || "Failed to approve request.");
+        }
+    };
+
+    // 🚨 Fixed: Specific Rejection Handler
+    const handleRejectStudent = async (studentId: string) => {
+        try {
+            await memberService.removeMember(classroom.id, studentId);
+            setPendingMembers(prev => prev.filter(m => m.userId !== studentId));
+            toast.info("Request denied.");
+        } catch (error: any) {
+            toast.error(error.response?.data?.message || "Failed to deny request.");
+        }
+    };
+
+    // 🚨 New: Specific Payment Update Handler
+    const handleUpdatePayment = async (studentId: string) => {
+        const durationStr = window.prompt("Enter subscription duration in months (1, 3, 6, 12):", "1");
+        if (!durationStr) return; // User cancelled
+        
+        const durationInMonths = parseInt(durationStr, 10);
+        if (![1, 3, 6, 12].includes(durationInMonths)) {
+            toast.error("Invalid duration. Allowed values are 1, 3, 6, or 12.");
+            return;
+        }
+
+        try {
+            const res = await memberService.updateStudentPayment(classroom.id, studentId, durationInMonths);
+            toast.success(res.message || "Payment validity updated successfully.");
+        } catch (error: any) {
+            toast.error(error.response?.data?.message || "Failed to update payment.");
         }
     };
 
     const handleRemoveStudent = async (studentId: string) => {
-        if (!confirm("Are you sure you want to remove this student? They will lose access to all coursework.")) return;
+        if (!window.confirm("Are you sure you want to remove this student? They will lose access to all coursework.")) return;
 
         try {
             await memberService.removeMember(classroom.id, studentId);
@@ -109,7 +135,7 @@ const PeopleTab = ({ classroom }: PeopleTabProps) => {
     return (
         <div className="space-y-12 bg-white p-6 sm:p-10 rounded-lg border border-slate-200 shadow-sm">
             
-            {/* 🚨 NEW: Pending Requests Section (Tutor Only) */}
+            {/* Pending Requests Section (Tutor Only) */}
             {user?.accountType === "TUTOR" && pendingMembers.length > 0 && (
                 <section className="bg-amber-50/50 p-6 rounded-xl border border-amber-200">
                     <div className="flex items-center gap-2 border-b border-amber-200 pb-3 mb-4">
@@ -140,14 +166,14 @@ const PeopleTab = ({ classroom }: PeopleTabProps) => {
                                         size="sm" 
                                         variant="outline" 
                                         className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 h-8"
-                                        onClick={() => handleActionRequest(pending.userId, 'REJECTED')}
+                                        onClick={() => handleRejectStudent(pending.userId)}
                                     >
                                         <FiX className="h-4 w-4 mr-1" /> Deny
                                     </Button>
                                     <Button 
                                         size="sm" 
                                         className="bg-green-600 hover:bg-green-700 h-8"
-                                        onClick={() => handleActionRequest(pending.userId, 'APPROVED')}
+                                        onClick={() => handleApproveStudent(pending.userId)}
                                     >
                                         <FiCheck className="h-4 w-4 mr-1" /> Approve
                                     </Button>
@@ -220,6 +246,10 @@ const PeopleTab = ({ classroom }: PeopleTabProps) => {
                                             <DropdownMenuItem onClick={() => openPerformanceChart(student.userId)} className="cursor-pointer font-medium text-indigo-600">
                                                 <ChartIcon className="mr-2 h-4 w-4" />
                                                 View Performance
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleUpdatePayment(student.userId)} className="cursor-pointer font-medium text-green-600">
+                                                <FiCreditCard className="mr-2 h-4 w-4" />
+                                                Update Payment
                                             </DropdownMenuItem>
                                             <DropdownMenuItem className="cursor-pointer text-red-600" onClick={() => handleRemoveStudent(student.userId)}>
                                                 <MdRemoveModerator className="mr-2 h-4 w-4" />
