@@ -20,18 +20,19 @@ import { upload } from "../middlewares/upload.middleware.ts";
 const router: Router = Router({ mergeParams: true });
 
 /**
- * @route /api/v1/classrooms/:classroomId/announcements
+ * @section Core Discovery & Creation
+ * @url /api/v1/classrooms/:classroomId/announcements
  * @access Private (Classroom Members)
  */
 router
     .route("/")
     /**
-     * @route GET /
+     * @route GET /api/v1/classrooms/:classroomId/announcements
      * @description Retrieve all announcements for the classroom feed.
      */
     .get(announcementController.getAnnouncements as any)
     /**
-     * @route POST /
+     * @route POST /api/v1/classrooms/:classroomId/announcements
      * @description Create a new announcement. Restricted to classroom staff.
      * Integrates Multer to handle up to 5 concurrent file attachments.
      */
@@ -42,13 +43,13 @@ router
     );
 
 /**
- * @route /api/v1/classrooms/:classroomId/announcements/:announcementId
- * @access Private (Author or Creator)
+ * @section Announcement Management
+ * @url /api/v1/classrooms/:classroomId/announcements/:announcementId
  */
 router
     .route("/:announcementId")
     /**
-     * @route DELETE /:announcementId
+     * @route DELETE /api/v1/classrooms/:classroomId/announcements/:announcementId
      * @description Permanently removes an announcement and its storage assets.
      */
     .delete(
@@ -59,7 +60,7 @@ router
 /**
  * @section Sub-Resource Nesting
  * Mounts the comment router for granular discussion tracking per announcement.
- * Pattern: /api/v1/classrooms/:classroomId/announcements/:announcementId/comments
+ * @access Private (Classroom Members)
  */
 router.use("/:announcementId/comments", commentRouter);
 

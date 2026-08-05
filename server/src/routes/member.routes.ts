@@ -9,6 +9,7 @@
  */
 import { Router } from "express";
 import * as memberController from "../controllers/member.controller.ts";
+import { isClassroomTutor } from "../middlewares/auth.middleware.ts";
 
 /**
  * @constant router
@@ -18,44 +19,68 @@ import * as memberController from "../controllers/member.controller.ts";
 const router: Router = Router({ mergeParams: true });
 
 /**
- * @route GET /api/v1/classrooms/:classroomId/members
- * @description Fetches all members (or filtered by PENDING/APPROVED status).
- * @access Private (Classroom Tutor)
+ * @section Base Member Routes
+ * @url /api/v1/classrooms/:classroomId/members
+ * @access Private (Classroom Member)
  */
-router.route("/").get(memberController.getClassroomMembers as any);
+router
+    .route("/")
+    /** 
+     * @route GET /api/v1/classrooms/:classroomId/members 
+     * @description Fetches all members (or filtered by PENDING/APPROVED status)
+     */
+    .get(memberController.getClassroomMembers as any);
 
 /**
- * @route DELETE /api/v1/classrooms/:classroomId/members/:memberId
- * @description Expels a member from the classroom.
+ * @section Member Removal
+ * @url /api/v1/classrooms/:classroomId/members/:memberId
  * @access Private (Classroom Tutor)
  */
-router.route("/:memberId").delete(memberController.removeMember as any);
+router
+    .route("/:memberId")
+    /** 
+     * @route DELETE /api/v1/classrooms/:classroomId/members/:memberId 
+     * @description Expels a member from the classroom.
+     */
+    .delete(isClassroomTutor as any, memberController.removeMember as any);
 
 /**
- * @route PATCH /api/v1/classrooms/:classroomId/members/:studentId/approve
- * @description Approves a student's pending join request.
+ * @section Member Approval
+ * @url /api/v1/classrooms/:classroomId/members/:studentId/approve
  * @access Private (Classroom Tutor)
  */
 router
     .route("/:studentId/approve")
-    .patch(memberController.approveStudent as any);
+    /** 
+     * @route PATCH /api/v1/classrooms/:classroomId/members/:studentId/approve 
+     * @description Approves a student's pending join request.
+     */
+    .patch(isClassroomTutor as any, memberController.approveStudent as any);
 
 /**
- * @route PATCH /api/v1/classrooms/:classroomId/members/:studentId/payment
- * @description Updates the fee-validity period (expiry date) for a student.
+ * @section Fee Management
+ * @url /api/v1/classrooms/:classroomId/members/:studentId/payment
  * @access Private (Classroom Tutor)
  */
 router
     .route("/:studentId/payment")
-    .patch(memberController.updateStudentPayment as any);
+    /** 
+     * @route PATCH /api/v1/classrooms/:classroomId/members/:studentId/payment 
+     * @description Updates the fee-validity period (expiry date) for a student.
+     */
+    .patch(isClassroomTutor as any, memberController.updateStudentPayment as any);
 
 /**
- * @route GET /api/v1/classrooms/:classroomId/members/:studentId/performance
- * @description Fetches the performance data for a specific student to render analytics.
+ * @section Performance Analytics
+ * @url /api/v1/classrooms/:classroomId/members/:studentId/performance
  * @access Private (Classroom Tutor - Enforced by classroom.routes.ts mount)
  */
 router
-    .route("//:studentId/performance")
+    .route("/:studentId/performance")
+    /** 
+     * @route GET /api/v1/classrooms/:classroomId/members/:studentId/performance 
+     * @description Fetches the performance data for a specific student to render analytics.
+     */
     .get(memberController.getStudentPerformance as any);
 
 export default router;

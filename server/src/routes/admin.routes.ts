@@ -17,26 +17,38 @@ import * as adminController from "../controllers/admin.controller.ts";
 const router: Router = Router();
 
 /**
- * @route GET /api/v1/admin/tutors
- * @description Fetch tutor applications by status.
- * @query {string} status - Filter: PENDING, VERIFIED, or REJECTED.
+ * @section Tutor Application Management
+ * @url /api/v1/admin/tutors
+ * @access Admin only
  */
-router.route("/tutors").get(adminController.getTutorApplications as any);
+router
+    .route("/tutors")
+    /**
+     * @route /api/v1/admin/tutors
+     * @description Fetch tutor applications by status.
+     */
+    .get(adminController.getTutorApplications as any);
 
 /**
- * @route PATCH /api/v1/admin/tutors/:tutorId/approve
- * @description Approve a specific tutor application.
+ * @url /api/v1/admin/tutors/:tutorId/approve
  */
 router
     .route("/tutors/:tutorId/approve")
+    /** 
+     * @route PATCH /api/v1/admin/tutors/:tutorId/approve 
+     * @description Approve a specific tutor application.
+     */
     .patch(adminController.approveTutor as any);
 
 /**
- * @route PATCH /api/v1/admin/tutors/:tutorId/reject
- * @description Reject a specific tutor application.
+ * @url /api/v1/admin/tutors/:tutorId/reject
  */
 router
     .route("/tutors/:tutorId/reject")
+    /** 
+     * @route PATCH /api/v1/admin/tutors/:tutorId/reject 
+     * @description Reject a specific tutor application.
+     */
     .patch(adminController.rejectTutor as any);
 
 export default router;

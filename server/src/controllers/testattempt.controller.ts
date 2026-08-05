@@ -25,8 +25,6 @@ import { dayjs } from "../configs/dayjs.config.ts";
  * 1. Checks if the current time falls within the 'Live' window of the Question Paper.
  * 2. If inside window: type is 'OFFICIAL'. If outside: type is 'PRACTICE'.
  * 3. Enforces a "One-Attempt" policy for OFFICIAL sessions to maintain exam integrity.
- * @param {AuthenticatedRequest} req - Params: { paperId }.
- * @returns {Promise<void>}
  */
 export const startTestAttempt = async (
     req: AuthenticatedRequest,
@@ -37,7 +35,6 @@ export const startTestAttempt = async (
         const { paperId } = req.params as { paperId: string };
         const studentId = req.user?.id as string;
 
-        /** @section Validation Fix */
         if (!paperId?.trim()) {
             throw new BadRequestError("Paper ID is required.");
         }
@@ -49,25 +46,28 @@ export const startTestAttempt = async (
             throw new NotFoundError("Question paper not found.");
         }
 
-        /** @section STATUS CHECK (Server Side Gate) */
-        if (questionPaper.status === "SCHEDULED") {
-            throw new ForbiddenError("Test has not started yet.");
-        }
-        if (questionPaper.status === "PAUSED") {
-            throw new ForbiddenError(
-                "Test is currently paused by the instructor.",
-            );
-        }
-        if (questionPaper.status === "CANCELLED") {
-            throw new ForbiddenError("Test has been cancelled.");
-        }
-
-        /** @section Temporal Logic */
         const now = dayjs();
         const liveAt = dayjs(questionPaper.liveAt);
         const endTime = liveAt.add(questionPaper.duration, "minute");
-        const isOfficialWindow =
-            questionPaper.status === "LIVE" && now.isBefore(endTime);
+
+        /** @section STATUS CHECK (Server Side Gate) */
+        if (questionPaper.status === "CANCELLED") {
+            throw new ForbiddenError("Test has been cancelled.");
+        }
+        if (questionPaper.status === "PAUSED") {
+            throw new ForbiddenError("Test is currently paused by the instructor.");
+        }
+        if (questionPaper.status === "SCHEDULED") {
+            // Check the clock! If time hasn't arrived yet, block them.
+            if (now.isBefore(liveAt)) {
+                throw new ForbiddenError("Test has not started yet. Please wait until the scheduled time.");
+            }
+            // If the time HAS passed, we proceed (effectively treating it as LIVE).
+        }
+
+        /** @section Temporal Logic */
+        // We consider it official if we are past the start time AND before the end time
+        const isOfficialWindow = now.isAfter(liveAt) && now.isBefore(endTime);
         const attemptType = isOfficialWindow ? "OFFICIAL" : "PRACTICE";
 
         /** @section Anti-Cheat: Official Attempt Enforcement */
@@ -80,9 +80,7 @@ export const startTestAttempt = async (
                 },
             });
             if (existing) {
-                throw new ConflictError(
-                    "You have already completed your OFFICIAL attempt for this test.",
-                );
+                throw new ConflictError("You have already completed your OFFICIAL attempt for this test.");
             }
         }
 
@@ -90,6 +88,7 @@ export const startTestAttempt = async (
             data: { type: attemptType, studentId, questionPaperId: paperId },
             include: { questionPaper: true },
         });
+        
         res.status(201).json({
             success: true,
             data: newAttempt,
@@ -258,6 +257,7 @@ export const submitTestAttempt = async (
         }
 
         let totalScore = 0;
+        const isNegativeMarkingActive = attempt.questionPaper.negativeMarking;
 
         /** @section Grading Algorithm Engine */
         for (const question of attempt.questionPaper.questions) {
@@ -269,25 +269,17 @@ export const submitTestAttempt = async (
             let isCorrect = false;
 
             if (question.type.toUpperCase() === "NAT") {
-                isCorrect =
-                    studentAnswer.numericalAnswer ===
-                    question.numericalCorrectAnswer;
+                isCorrect = studentAnswer.numericalAnswer === question.numericalCorrectAnswer;
             } else if (question.type.toUpperCase() === "MCQ") {
                 const correctOption = question.options.find((o) => o.isCorrect);
-                isCorrect =
-                    studentAnswer.selectedOptionId === correctOption?.id;
+                isCorrect = studentAnswer.selectedOptionId === correctOption?.id;
             } else if (question.type.toUpperCase() === "MSQ") {
-                const correctIds = question.options
-                    .filter((o) => o.isCorrect)
-                    .map((o) => o.id)
-                    .sort();
-                const studentIds = (studentAnswer.selectedOptionId || "")
-                    .split(",")
-                    .sort();
-                isCorrect =
-                    JSON.stringify(correctIds) === JSON.stringify(studentIds);
+                const correctIds = question.options.filter((o) => o.isCorrect).map((o) => o.id).sort();
+                const studentIds = (studentAnswer.selectedOptionId || "").split(",").sort();
+                isCorrect = JSON.stringify(correctIds) === JSON.stringify(studentIds);
             }
             if (isCorrect) totalScore += question.marks;
+            else if (isNegativeMarkingActive && question.type.toUpperCase() !== "NAT") totalScore -= (question.marks * 0.25);
         }
 
         const finalResult = await prisma.testAttempt.update({
@@ -320,28 +312,53 @@ export const getMyAttemptsForPaper = async (
         const { paperId } = req.params as { paperId: string };
         const studentId = req.user?.id as string;
 
-        /** @section Validation Fix */
         if (!paperId?.trim()) {
             throw new BadRequestError("Paper ID is required.");
         }
 
         const attempts = await prisma.testAttempt.findMany({
             where: { studentId: studentId, questionPaperId: paperId },
-            select: {
-                id: true,
-                type: true,
-                score: true,
-                submittedAt: true,
-                createdAt: true,
+            include: {
+                questionPaper: {
+                    include: { questions: { select: { marks: true } } }
+                }
             },
-            orderBy: { createdAt: "desc" },
+            orderBy: { createdAt: "asc" }, // Ascending for chronological charting
+        });
+
+        if (!attempts || attempts.length === 0) {
+            res.status(200).json({ success: true, data: [], message: "No attempts found." });
+            return;
+        }
+
+        if (!attempts[0]) {
+            res.status(200).json({ success: true, data: [], message: "No attempts found." });
+            return;
+        }
+
+        const maxScore = attempts[0].questionPaper.questions.reduce((sum, q) => sum + q.marks, 0);
+
+        // Map data for the Recharts frontend
+        const formattedData = attempts.map((attempt, index) => {
+            const rawScore = attempt.score || 0;
+            const percentage = maxScore > 0 ? (rawScore / maxScore) * 100 : 0;
+            const roundedPercentage = Math.round(percentage * 100) / 100;
+
+            return {
+                id: attempt.id,
+                name: `Attempt ${index + 1}`,
+                type: attempt.type,
+                score: roundedPercentage,
+                rawScore: rawScore,
+                maxScore: maxScore,
+                date: attempt.createdAt
+            };
         });
 
         res.status(200).json({
             success: true,
-            data: attempts,
-            message:
-                "Your test attempts for this paper retrieved successfully.",
+            data: formattedData,
+            message: "Your test attempts retrieved successfully.",
         });
     } catch (error) {
         next(error);

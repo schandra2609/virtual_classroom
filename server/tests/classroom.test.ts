@@ -20,10 +20,12 @@ describe("Classroom Module", () => {
       accountType: "TUTOR",
     });
 
-    // 2. Manually Verify Tutor (Simulating Admin Action)
-    await prisma.user.update({
-      where: { email: "tutor@test.com" },
-      data: { tutorVerificationStatus: "VERIFIED" },
+    // 2. Manually Verify Tutor via the TutorApplication ledger (schema refactored from User model)
+    const tutorUser = await prisma.user.findUnique({ where: { email: "tutor@test.com" }, select: { id: true } });
+    await prisma.tutorApplication.upsert({
+      where: { id: `seed-${tutorUser!.id}` },
+      update: { status: "VERIFIED" },
+      create: { id: `seed-${tutorUser!.id}`, userId: tutorUser!.id, status: "VERIFIED", documentUrl: "test" }
     });
 
     // 3. Login Tutor to get Token

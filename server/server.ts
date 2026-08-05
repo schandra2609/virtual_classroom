@@ -9,9 +9,12 @@
  * 4. Managing process lifecycle and graceful shutdowns.
  * @author Sayan Chandra
  */
-import app from "./src/app.ts";
+import https from "https";
+import fs from "fs";
+import path from "path";
 import bcrypt from "bcrypt";
 import chalk from "chalk";
+import app from "./src/app.ts";
 import { initSocket } from "./src/configs/socket.config.ts";
 import { ENV_CONFIG } from "./src/configs/env.config.ts";
 import { prisma } from "./src/configs/database.config.ts";
@@ -40,7 +43,7 @@ const seedAdmin = async (): Promise<void> => {
         });
 
         if (existingAdmin) {
-            Logger.info("Administrator account has been updated");
+            Logger.info("Administrator account already exists");
         } else {
             const hashedPassword = await bcrypt.hash(ENV_CONFIG.ADMIN.PASSWORD!, 10);
             await prisma.user.create({
@@ -70,8 +73,10 @@ const seedAdmin = async (): Promise<void> => {
  * 1. Establish PostgreSQL connection via Prisma.
  * 2. Verify/Create MinIO buckets.
  * 3. Verify SMTP (Mailer) credentials.
- * 4. Seed the Admin user.
- * 5. Bind the Express app to the configured network port.
+ * 4. Verify Arcjet connection.
+ * 5. Seed the Admin user.
+ * 6. Bind the Express app to the network port using an HTTPS Server.
+ * 7. Initialize WebSockets (Socket.io) attached to the secure server.
  * @returns {Promise<void>}
  */
 const startServer = async (): Promise<void> => {
@@ -93,10 +98,14 @@ const startServer = async (): Promise<void> => {
         await seedAdmin();
 
         // Step 6: Start Listening
-        const httpServer = app.listen(ENV_CONFIG.PORT, "0.0.0.0", () => {
+        const httpOptions = {
+            key: fs.readFileSync(path.resolve(process.cwd(), "../192.168.29.253+3-key.pem")),
+            cert: fs.readFileSync(path.resolve(process.cwd(), "../192.168.29.253+3.pem")),
+        };
+        const httpServer = https.createServer(httpOptions, app).listen(ENV_CONFIG.PORT, "0.0.0.0", () => {
             Logger.log(
                 chalk.greenBright.bold.italic(">>> ") +
-                chalk.bgGreenBright.black.italic.bold(` Server running in ${ENV_CONFIG.NODE_ENV} mode on port ${ENV_CONFIG.PORT} `,),
+                chalk.bgGreenBright.black.italic.bold(` Secure HTTPS Server running in ${ENV_CONFIG.NODE_ENV} mode on port ${ENV_CONFIG.PORT} `),
             );
         });
 

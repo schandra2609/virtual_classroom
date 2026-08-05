@@ -94,9 +94,9 @@ describe("Admin & Tutor Verification Workflow", () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.success).toBe(true);
     
-    // Double check via DB
-    const updatedTutor = await prisma.user.findUnique({ where: { id: tutorId } });
-    expect(updatedTutor?.tutorVerificationStatus).toBe("VERIFIED");
+    // Double check via DB — verification status lives in TutorApplication, not User
+    const application = await prisma.tutorApplication.findFirst({ where: { userId: tutorId } });
+    expect(application?.status).toBe("VERIFIED");
   });
 
   it("Step 4: Verified Tutor should now be able to create a classroom", async () => {

@@ -15,6 +15,7 @@ import {
 } from "../utils/Error.ts";
 import { prisma } from "../configs/database.config.ts";
 import { notifyNewComment } from "../services/socket.service.ts";
+import { getPresignedUrl } from "../services/storage.service.ts";
 
 /**
  * @async
@@ -40,14 +41,28 @@ export const getCommentsForAnnouncement = async (
         const comments = await prisma.comment.findMany({
             where: { announcementId: announcementId },
             include: {
-                author: { select: { id: true, fullName: true } },
+                author: { select: {
+                    id: true,
+                    fullName: true,
+                    profilePhotoUrl: true,
+                    accountType: true,
+                }},
             },
-            orderBy: { createdAt: "asc" }, // Chronological order for readable conversation
+            orderBy: { createdAt: "asc" },
         });
+
+        const formattedData = await Promise.all(
+            comments.map(async (comment) => {
+                if (comment.author?.profilePhotoUrl && !comment.author.profilePhotoUrl.startsWith("http")) {
+                    comment.author.profilePhotoUrl = await getPresignedUrl(comment.author.profilePhotoUrl);
+                }
+                return comment;
+            })
+        );
 
         res.status(200).json({
             success: true,
-            data: comments,
+            data: formattedData,
             message: "Comments retrieved successfully",
         });
     } catch (error) {
@@ -118,7 +133,7 @@ export const createComment = async (
          * P2003 occurs if 'announcementId' doesn't point to a valid record.
          */
         if (error.code === "P2003") {
-            next(
+            return next(
                 new NotFoundError("The specified announcement does not exist"),
             );
         }

@@ -4,20 +4,21 @@
     cellspacing="0"
     width="100%"
     style="
-        max-width: 512px;
+        max-width: 600px;
         margin: 0 auto;
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
         border-radius: 8px;
         overflow: hidden;
-        font-family: &quot;Segoe UI&quot;, Tahoma, Geneva, Verdana, sans-serif;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
     "
 >
-    <!-- Header -->
     <tr>
         <td
             style="
-                background: linear-gradient(135deg, #0b6815 10%, #0e7490 100%);
-                padding: 32px 24px;
+                background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+                padding: 36px 24px;
                 text-align: center;
             "
         >
@@ -25,86 +26,80 @@
                 style="
                     margin: 0;
                     color: #ffffff;
-                    font-size: 26px;
-                    font-weight: 600;
-                    letter-spacing: 1px;
-                    font-family: Arial, Helvetica, sans-serif;
-                    text-shadow: 2px 3px 10px rgba(0, 0, 0, 0.75);
+                    font-size: 24px;
+                    font-weight: 700;
+                    letter-spacing: 2px;
+                    text-transform: uppercase;
                 "
             >
-                VIRTUAL CLASSROOM
+                Virtual Classroom
             </h1>
         </td>
     </tr>
 
-    <!-- Body Content -->
     <tr>
         <td
             style="
-                padding: 40px 32px;
+                padding: 40px;
                 color: #334155;
                 line-height: 1.6;
                 font-size: 16px;
-                font-family: &quot;Times New Roman&quot;, Times, serif;
             "
         >
-            <!-- Title -->
             <h2
                 style="
                     margin-top: 0;
-                    color: #0f766e;
+                    color: #1e40af;
                     font-size: 20px;
                     font-weight: 600;
-                    margin-bottom: 16px;
+                    margin-bottom: 24px;
                 "
             >
                 ${title}
             </h2>
 
-            <!-- Greeting -->
-            <p style="margin: 0 0 16px 0">
-                Hello <strong>${userName}</strong>,
+            <p style="margin: 0 0 20px 0;">
+                Dear <strong>${userName}</strong>,
             </p>
 
-            <!-- Dynamic Content Injection -->
-            <div style="width: 100%">${bodyContent}</div>
+            <div style="width: 100%; margin-bottom: 32px;">
+                ${bodyContent}
+            </div>
 
-            <!-- Sign off -->
-            <p
+            <div
                 style="
                     margin-top: 32px;
-                    margin-bottom: 0;
                     border-top: 1px solid #e2e8f0;
                     padding-top: 24px;
                     font-size: 15px;
+                    color: #475569;
                 "
             >
-                Best regards,<br />
-                <span style="font-weight: 600; color: #0e7490"
-                    >The Virtual Classroom Team</span
-                >
-            </p>
+                <p style="margin: 0 0 4px 0;">Sincerely,</p>
+                <p style="margin: 0; font-weight: 600; color: #1e40af;">
+                    The Virtual Classroom Team
+                </p>
+            </div>
         </td>
     </tr>
 
-    <!-- Footer -->
     <tr>
         <td
             style="
-                background-color: #e2e8f0;
+                background-color: #f8fafc;
                 padding: 24px;
                 text-align: center;
                 color: #64748b;
                 font-size: 13px;
-                border-top: 1px solid #cbd5e1;
+                line-height: 1.5;
+                border-top: 1px solid #e2e8f0;
             "
         >
-            <p style="margin: 4px 0">
-                This is an automated mail from the Virtual Classroom.
+            <p style="margin: 0 0 8px 0;">
+                This is an automated message from the Virtual Classroom platform. Please do not reply directly to this email.
             </p>
-            <p style="margin: 4px 0">
-                &copy; 2026-${currentYear} Virtual Classroom. All rights
-                reserved.
+            <p style="margin: 0;">
+                &copy; 2026-${currentYear} Virtual Classroom. All rights reserved.
             </p>
         </td>
     </tr>

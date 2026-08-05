@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { FiUploadCloud, FiFileText, FiClock, FiMonitor } from "react-icons/fi";
+import { FiUploadCloud, FiFileText, FiMonitor } from "react-icons/fi";
 
 // Services & Types
 import { assignmentService } from "@/api/assignment.service";
@@ -23,17 +23,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 const courseworkSchema = z.object({
     title: z.string().min(3, "Title must be at least 3 characters."),
     type: z.enum(["ASSIGNMENT", "CBT_EXAM"], { message: "Please select a coursework type." }),
-    targetDate: z.string().min(1, "Date is required."),
-    description: z.string().optional(),
-    duration: z.number().min(5, "Exam must be at least 5 minutes.").optional(),
+    targetDate: z.string().optional(), // Made optional so CBT doesn't trip the validation
+    description: z.string().optional()
 });
 
 type CourseworkFormValues = z.infer<typeof courseworkSchema>;
 
-const CreateCourseworkDialog = ({ open, onOpenChange, onSuccess }: CreateCourseworkDialogProps) => {
+const formatDateTimeLocal = (date: Date) => {
+    const d = new Date(date);
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+};
+
+const CreateCourseworkDialog = ({ open, onOpenChange, onSuccess, editData }: CreateCourseworkDialogProps) => {
     const { id: classroomId } = useParams<{ id: string }>();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+    const isEditMode = !!editData;
 
     const form = useForm<CourseworkFormValues>({
         resolver: zodResolver(courseworkSchema),
@@ -42,9 +49,27 @@ const CreateCourseworkDialog = ({ open, onOpenChange, onSuccess }: CreateCoursew
             type: "ASSIGNMENT",
             targetDate: "",
             description: "",
-            duration: 60,
         },
     });
+
+    useEffect(() => {
+        if (editData) {
+            form.reset({
+                title: editData.title,
+                type: editData.type,
+                targetDate: editData.targetDate ? formatDateTimeLocal(editData.targetDate) : "",
+                description: editData.description || "",
+            });
+        } else {
+            form.reset({
+                title: "",
+                type: "ASSIGNMENT",
+                targetDate: "",
+                description: "",
+            });
+            setSelectedFile(null);
+        }
+    }, [editData, form]);
 
     const selectedType = form.watch("type");
 
@@ -67,45 +92,61 @@ const CreateCourseworkDialog = ({ open, onOpenChange, onSuccess }: CreateCoursew
             setIsSubmitting(true);
             
             if (values.type === "ASSIGNMENT") {
-                if (!selectedFile) {
-                    toast.error("Please attach an assignment document (PDF).");
+                if (!values.targetDate) {
+                    toast.error("Please provide a due date for the assignment.");
                     setIsSubmitting(false);
                     return;
                 }
 
-                const formData = new FormData();
-                formData.append("title", values.title);
-                formData.append("instruction", values.description || "");
-                formData.append("deadline", new Date(values.targetDate).toISOString());
-                formData.append("document", selectedFile); // Ensure this key matches your backend multer config!
+                if (isEditMode) {
+                    const payload = {
+                        title: values.title,
+                        instructions: values.description || "",
+                        deadline: new Date(values.targetDate).toISOString(),
+                    };
+                    const response = await assignmentService.updateAssignment(classroomId, editData.id, payload);
+                    if (response.success) toast.success("Assignment updated successfully!");
+                } else {
+                    if (!selectedFile) {
+                        toast.error("Please attach an assignment document (PDF).");
+                        setIsSubmitting(false);
+                        return;
+                    }
 
-                const response = await assignmentService.createAssignment(classroomId, formData);
-                if (response.success) toast.success("Assignment created successfully!");
+                    const formData = new FormData();
+                    formData.append("title", values.title);
+                    formData.append("instruction", values.description || "");
+                    formData.append("deadline", new Date(values.targetDate).toISOString());
+                    formData.append("attachments", selectedFile); 
+
+                    const response = await assignmentService.createAssignment(classroomId, formData);
+                    if (response.success) toast.success("Assignment created successfully!");
+                }
 
             } else if (values.type === "CBT_EXAM") {
-                if (!values.duration) {
-                    toast.error("Please specify the exam duration.");
-                    setIsSubmitting(false);
-                    return;
-                }
-
+                // Initialize with safe dummy defaults to satisfy backend requirements. 
+                // The tutor will configure the real values in the final Generator stage.
                 const payload = {
                     title: values.title,
-                    liveAt: new Date(values.targetDate),
-                    duration: values.duration
+                    liveAt: new Date(Date.now() + 86400000), // Default to +24 hours
+                    duration: 60 // Default to 60 mins
                 };
 
-                const response = await qpaperService.createQuestionPaper(classroomId, payload);
-                if (response.success) toast.success("Exam scheduled! You can now add questions in the CBT Builder.");
+                if (isEditMode) {
+                    // Only updating the title here, since dates are managed in the builder
+                    const response = await qpaperService.updateQuestionPaper(classroomId, editData.id, { title: values.title });
+                    if (response.success) toast.success("Exam title updated!");
+                } else {
+                    const response = await qpaperService.createQuestionPaper(classroomId, payload);
+                    if (response.success) toast.success("Exam initialized! You can now configure it in the builder.");
+                }
             }
 
             onSuccess();
-            form.reset();
-            setSelectedFile(null);
             onOpenChange(false);
             
         } catch (error: any) {
-            toast.error(error.response?.data?.message || "Failed to create coursework.");
+            toast.error(error.response?.data?.message || `Failed to ${isEditMode ? 'update' : 'create'} coursework.`);
         } finally {
             setIsSubmitting(false);
         }
@@ -115,16 +156,17 @@ const CreateCourseworkDialog = ({ open, onOpenChange, onSuccess }: CreateCoursew
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Create Coursework</DialogTitle>
+                    <DialogTitle>{isEditMode ? "Edit Coursework" : "Create Coursework"}</DialogTitle>
                     <DialogDescription>
-                        Upload an assignment PDF or schedule a secure CBT exam.
+                        {isEditMode 
+                            ? "Update the schedule, title, or instructions for this material." 
+                            : "Upload an assignment PDF or initialize a secure CBT exam container."}
                     </DialogDescription>
                 </DialogHeader>
 
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-4">
                         
-                        {/* 1. Global Setup */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <FormField
                                 control={form.control}
@@ -132,9 +174,14 @@ const CreateCourseworkDialog = ({ open, onOpenChange, onSuccess }: CreateCoursew
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Coursework Type</FormLabel>
-                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <Select 
+                                            onValueChange={field.onChange} 
+                                            defaultValue={field.value} 
+                                            value={field.value}
+                                            disabled={isEditMode}
+                                        >
                                             <FormControl>
-                                                <SelectTrigger className="bg-slate-50 border-slate-300">
+                                                <SelectTrigger className={`bg-slate-50 border-slate-300 ${isEditMode ? 'opacity-50' : ''}`}>
                                                     <SelectValue placeholder="Select type" />
                                                 </SelectTrigger>
                                             </FormControl>
@@ -163,30 +210,31 @@ const CreateCourseworkDialog = ({ open, onOpenChange, onSuccess }: CreateCoursew
                             />
                         </div>
 
-                        {/* 2A. ASSIGNMENT SPECIFIC UI */}
                         {selectedType === "ASSIGNMENT" && (
                             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 flex flex-col items-center justify-center text-center bg-slate-50 relative hover:bg-slate-100 transition-colors">
-                                    <input 
-                                        type="file" 
-                                        accept=".pdf" 
-                                        onChange={handleFileUpload}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
-                                    />
-                                    {selectedFile ? (
-                                        <>
-                                            <FiFileText className="h-10 w-10 text-primary mb-2" />
-                                            <p className="text-sm font-medium text-slate-900">{selectedFile.name}</p>
-                                            <p className="text-xs text-slate-500 mt-1">Click to replace file</p>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <FiUploadCloud className="h-10 w-10 text-slate-400 mb-2" />
-                                            <p className="text-sm font-medium text-slate-900">Upload Assignment Document</p>
-                                            <p className="text-xs text-slate-500 mt-1">Students will view this PDF and submit their own.</p>
-                                        </>
-                                    )}
-                                </div>
+                                {!isEditMode && (
+                                    <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 flex flex-col items-center justify-center text-center bg-slate-50 relative hover:bg-slate-100 transition-colors">
+                                        <input 
+                                            type="file" 
+                                            accept=".pdf" 
+                                            onChange={handleFileUpload}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                                        />
+                                        {selectedFile ? (
+                                            <>
+                                                <FiFileText className="h-10 w-10 text-primary mb-2" />
+                                                <p className="text-sm font-medium text-slate-900">{selectedFile.name}</p>
+                                                <p className="text-xs text-slate-500 mt-1">Click to replace file</p>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FiUploadCloud className="h-10 w-10 text-slate-400 mb-2" />
+                                                <p className="text-sm font-medium text-slate-900">Upload Assignment Document</p>
+                                                <p className="text-xs text-slate-500 mt-1">Students will view this PDF and submit their own.</p>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
 
                                 <FormField
                                     control={form.control}
@@ -201,10 +249,25 @@ const CreateCourseworkDialog = ({ open, onOpenChange, onSuccess }: CreateCoursew
                                         </FormItem>
                                     )}
                                 />
+
+                                <div className="pt-2 border-t border-slate-100">
+                                    <FormField
+                                        control={form.control}
+                                        name="targetDate"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Due Date & Time</FormLabel>
+                                                <FormControl>
+                                                    <Input type="datetime-local" {...field} />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
                             </div>
                         )}
 
-                        {/* 2B. CBT EXAM SPECIFIC UI */}
                         {selectedType === "CBT_EXAM" && (
                             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                                 <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-lg flex gap-3">
@@ -212,52 +275,19 @@ const CreateCourseworkDialog = ({ open, onOpenChange, onSuccess }: CreateCoursew
                                     <div>
                                         <h4 className="text-sm font-medium text-indigo-900">CBT Configuration</h4>
                                         <p className="text-xs text-indigo-700 mt-1">
-                                            This will initialize the exam container. Once created, you can navigate to the CBT Builder to write your questions, configure options, or use the Gemini AI generator.
+                                            This initializes the exam wrapper. After clicking Create, you will set the **Live Schedule, Duration, and Rules** directly inside the AI Builder.
                                         </p>
                                     </div>
                                 </div>
-                                <FormField
-                                    control={form.control}
-                                    name="duration"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Duration (in minutes)</FormLabel>
-                                            <FormControl>
-                                                <div className="relative">
-                                                    <FiClock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                                                    <Input type="number" className="pl-9" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
-                                                </div>
-                                            </FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
                             </div>
                         )}
-
-                        {/* 3. Global Configuration (Schedule) */}
-                        <div className="pt-2 border-t border-slate-100">
-                            <FormField
-                                control={form.control}
-                                name="targetDate"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>{selectedType === "ASSIGNMENT" ? "Due Date & Time" : "Live At (Scheduled Start Time)"}</FormLabel>
-                                        <FormControl>
-                                            <Input type="datetime-local" {...field} />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                        </div>
 
                         <div className="pt-4 flex justify-end gap-2 border-t border-slate-100 mt-6">
                             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
                                 Cancel
                             </Button>
                             <Button type="submit" disabled={isSubmitting}>
-                                {isSubmitting ? "Saving..." : selectedType === "CBT_EXAM" ? "Initialize Exam" : "Post Assignment"}
+                                {isSubmitting ? "Saving..." : isEditMode ? "Save Changes" : selectedType === "CBT_EXAM" ? "Initialize Exam Container" : "Post Assignment"}
                             </Button>
                         </div>
                     </form>

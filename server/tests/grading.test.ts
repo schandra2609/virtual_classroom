@@ -20,10 +20,10 @@ describe("Grading Engine & Question Management", () => {
       accountType: "TUTOR"
     });
     
-    // Manually verify tutor in DB
-    await prisma.user.update({ 
-      where: { email: "gtutor@test.com" }, 
-      data: { tutorVerificationStatus: "VERIFIED" } 
+    // Manually verify tutor in DB by creating a verified TutorApplication
+    const tutor = await prisma.user.findUniqueOrThrow({ where: { email: "gtutor@test.com" } });
+    await prisma.tutorApplication.create({
+      data: { userId: tutor.id, status: "VERIFIED", documentUrl: "test-doc.pdf" }
     });
 
     const tLogin = await request(app).post("/api/v1/auth/login").send({ 

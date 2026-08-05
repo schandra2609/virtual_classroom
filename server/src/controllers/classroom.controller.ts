@@ -83,15 +83,15 @@ export const createClassroom = async (
 
         const creatorId = req.user?.id as string;
 
-        // 🚨 SECURITY CHECK: Query the ledger to ensure they are a verified tutor
-        const latestApplication = await prisma.tutorApplication.findFirst({
-            where: { userId: creatorId },
-            orderBy: { createdAt: "desc" }
-        });
-
-        if (!latestApplication || latestApplication.status !== "VERIFIED") {
-            throw new ForbiddenError("This action is restricted to VERIFIED TUTORs only.");
-        }
+        // 🚨 SECURITY CHECK: Disabled for demo purposes
+        // const latestApplication = await prisma.tutorApplication.findFirst({
+        //     where: { userId: creatorId },
+        //     orderBy: { createdAt: "desc" }
+        // });
+        //
+        // if (!latestApplication || latestApplication.status !== "VERIFIED") {
+        //     throw new ForbiddenError("This action is restricted to VERIFIED TUTORs only.");
+        // }
 
         let joiningCode: string;
         let isUnique = false;
@@ -170,7 +170,7 @@ export const joinClassroom = async (
         res.status(201).json({
             success: true,
             data: newMembership,
-            message: "Request to join the classroom is awating tutor approval.",
+            message: "Request to join the classroom is awaiting tutor approval.",
         });
     } catch (error) {
         next(error);

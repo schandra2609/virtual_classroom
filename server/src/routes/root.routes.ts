@@ -67,15 +67,21 @@ router.use(
 );
 
 /**
- * @route GET /api/v1/health
- * @description System health check endpoint to verify API availability.
+ * @section System Health Check
+ * @url /api/v1/health
  * @access Public
  */
-router.route("/health").get((_req: Request, res: Response) => {
-    res.status(200).json({
-        success: true,
-        message: "Virtual Classroom API is running",
+router
+    .route("/health")
+    /**
+     * @route GET /api/v1/health
+     * @description System health check endpoint to verify API availability.
+     */
+    .get((_req: Request, res: Response) => {
+        res.status(200).json({
+            success: true,
+            message: "Virtual Classroom API is running",
+        });
     });
-});
 
 export default router;

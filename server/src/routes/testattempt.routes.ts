@@ -18,15 +18,25 @@ const router: Router = Router({ mergeParams: true });
 
 /**
  * @section Attempt Initialization & History
+ * @access Private (Classroom Student)
+ * @url /api/v1/classrooms/:classroomId/papers/:paperId/attempts
  */
 router
     .route("/")
-    /** @route GET / - Fetch my attempt history for this paper */
+    /**
+     * @route GET /api/v1/classrooms/:classroomId/papers/:paperId/attempts
+     * @description Fetch my attempt history for this paper.
+     * @access Private (Classroom Student)
+     */
     .get(
         isClassroomStudent as any,
         testAttemptController.getMyAttemptsForPaper as any,
     )
-    /** @route POST / - Start a new Practice or Official attempt */
+    /**
+     * @route POST /api/v1/classrooms/:classroomId/papers/:paperId/attempts
+     * @description Start a new Practice or Official attempt.
+     * @access Private (Classroom Student)
+     */
     .post(
         isClassroomStudent as any,
         testAttemptController.startTestAttempt as any,
@@ -34,15 +44,30 @@ router
 
 /**
  * @section Active Session Logic
+ * @url /api/v1/classrooms/:classroomId/papers/:paperId/attempts/:attemptId/answers
+ * @access Private (Classroom Student)
  */
 router
     .route("/:attemptId/answers")
-    /** @route POST /:attemptId/answers - Sync answers in real-time */
+    /**
+     * @route POST /api/v1/classrooms/:classroomId/papers/:paperId/attempts/:attemptId/answers
+     * @description Sync answers in real-time.
+     * @access Private (Classroom Student)
+     */
     .post(isClassroomStudent as any, testAttemptController.submitAnswer as any);
 
+/**
+ * @section Finalization
+ * @url /api/v1/classrooms/:classroomId/papers/:paperId/attempts/:attemptId/submit
+ * @access Private (Classroom Student)
+ */
 router
     .route("/:attemptId/submit")
-    /** @route POST /:attemptId/submit - Finalize and trigger the grading engine */
+    /**
+     * @route POST /api/v1/classrooms/:classroomId/papers/:paperId/attempts/:attemptId/submit
+     * @description Finalize and trigger the grading engine.
+     * @access Private (Classroom Student)
+     */
     .post(
         isClassroomStudent as any,
         testAttemptController.submitTestAttempt as any,
@@ -50,10 +75,16 @@ router
 
 /**
  * @section Results & Feedback
+ * @url /api/v1/classrooms/:classroomId/papers/:paperId/attempts/:attemptId/review
+ * @access Private (Classroom Student)
  */
 router
     .route("/:attemptId/review")
-    /** @route GET /:attemptId/review - Detailed feedback report (Owners & Staff) */
+    /**
+     * @route GET /api/v1/classrooms/:classroomId/papers/:paperId/attempts/:attemptId/review
+     * @description Detailed feedback report (Owners & Staff).
+     * @access Private (Classroom Student)
+     */
     .get(testAttemptController.getAttemptReview as any);
 
 export default router;

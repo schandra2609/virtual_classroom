@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { FiMonitor, FiClock, FiShield, FiAlertTriangle, FiLock, FiCheckCircle } from "react-icons/fi";
+import { FiMonitor, FiClock, FiShield, FiAlertTriangle, FiCheckCircle, FiChevronLeft, FiChevronRight } from "react-icons/fi";
 
 // Services
 import { testattemptService } from "@/api/testattempt.service";
@@ -12,116 +12,261 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type ExamStatus = "LOADING" | "STANDBY" | "IN_PROGRESS" | "LOCKED" | "SUBMITTED";
+type ExamStatus = "LOADING" | "STANDBY" | "IN_PROGRESS" | "SUBMITTED";
 
 const CBTPlayer = () => {
     const { classroomId, paperId } = useParams<{ classroomId: string; paperId: string }>();
     const navigate = useNavigate();
 
+    // --- Core State ---
     const [status, setStatus] = useState<ExamStatus>("LOADING");
     const [paperDetails, setPaperDetails] = useState<any>(null);
-    const [lockReason, setLockReason] = useState<string>("");
     const [activeAttemptId, setActiveAttemptId] = useState<string | null>(null);
+    
+    // --- Exam Interaction State ---
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const [localAnswers, setLocalAnswers] = useState<Record<string, any>>({});
+    const [visitedQuestions, setVisitedQuestions] = useState<Set<string>>(new Set());
 
-    // Fetch initial paper details on mount
+    // --- Timer State ---
+    const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
+
+    // --- Security & Warning State ---
+    const MAX_WARNINGS = 10;
+    const WARNING_DURATION_SEC = 5;
+    const PENALTY_SEC = 600; // 10 minutes
+    
+    const [isWarningActive, setIsWarningActive] = useState(false);
+    const [warningsUsed, setWarningsUsed] = useState(0);
+    const [warningReason, setWarningReason] = useState("");
+    const [warningTimeLeft, setWarningTimeLeft] = useState(WARNING_DURATION_SEC);
+    
+    const examTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const warningTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // ==========================================
+    // INITIALIZATION
+    // ==========================================
     useEffect(() => {
         const fetchDetails = async () => {
             if (!classroomId || !paperId) return;
             try {
-                // Fetch paper metadata to show on the standby screen
                 const response = await qpaperService.getQuestionPaperById(classroomId, paperId);
                 if (response.success) {
                     setPaperDetails(response.data);
+                    setRemainingSeconds((response.data.duration || 60) * 60);
+                    
+                    // Mark the first question as visited instantly if it exists
+                    if (response.data.questions && response.data.questions.length > 0) {
+                        setVisitedQuestions(new Set([response.data.questions[0].id]));
+                    }
+                    
                     setStatus("STANDBY");
                 }
             } catch (error: any) {
-                toast.error(error.response?.data?.message || "Failed to load exam details");
+                toast.error("Failed to load exam details");
                 navigate(`/dashboard/classrooms/${classroomId}`);
             }
         };
         fetchDetails();
     }, [classroomId, paperId, navigate]);
 
-    const triggerSecurityLock = useCallback(async (reason: string) => {
-        // Prevent locking if it's already locked or not running, or if we don't have an active attempt
-        if (status !== "IN_PROGRESS" || !activeAttemptId) return;
+    // ==========================================
+    // SUBMISSION & SYNC LOGIC
+    // ==========================================
+    const handleSubmitExam = useCallback(async (isAutoSubmit = false) => {
+        if (!activeAttemptId && !isAutoSubmit) return;
 
-        setStatus("LOCKED");
-        setLockReason(reason);
-        toast.error(`Security Violation: ${reason}`, { duration: Infinity });
-
-        // Ensure we exit fullscreen if they haven't already
-        if (document.fullscreenElement) {
-            await document.exitFullscreen().catch(console.error);
-        }
+        if (examTimerRef.current) clearInterval(examTimerRef.current);
+        if (warningTimerRef.current) clearInterval(warningTimerRef.current);
 
         try {
-            // Hit the Express backend to pause the timer and lock the exam using the specific attempt ID
-            await testattemptService.pauseAttempt(classroomId!, paperId!, activeAttemptId);
-        } catch (error) {
-            console.error("Failed to sync pause state with server:", error);
+            if (activeAttemptId) {
+                await testattemptService.submitTestAttempt(classroomId!, paperId!, activeAttemptId);
+            }
+            setStatus("SUBMITTED");
+            
+            if (document.fullscreenElement) {
+                await document.exitFullscreen().catch(console.error);
+            }
+            
+            toast.success(isAutoSubmit ? "Time expired. Exam auto-submitted." : "Exam submitted successfully!");
+        } catch (error: any) {
+            toast.error(error.response?.data?.message || "Failed to submit exam.");
         }
-    }, [classroomId, paperId, status, activeAttemptId]);
+    }, [activeAttemptId, classroomId, paperId]);
 
+    const syncAnswerToServer = async (questionId: string, payload: any) => {
+        if (!activeAttemptId) return;
+        try {
+            await testattemptService.submitAnswer(classroomId!, paperId!, activeAttemptId, {
+                questionId,
+                ...payload
+            });
+        } catch (error) {
+            console.error("Failed to sync answer to server", error);
+        }
+    };
+
+    // ==========================================
+    // PENALTY & WARNING ALGORITHM
+    // ==========================================
+    const applyPenalty = useCallback((_reasonLog: string) => {
+        setRemainingSeconds(prev => {
+            const newTime = prev - PENALTY_SEC;
+            if (newTime <= 0) {
+                handleSubmitExam(true);
+                return 0;
+            }
+            toast.error("PENALTY APPLIED: 10 minutes deducted from your timer.", { duration: 5000 });
+            return newTime;
+        });
+    }, [handleSubmitExam]);
+
+    const resolveWarning = useCallback(() => {
+        if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+        setIsWarningActive(false);
+    }, []);
+
+    const triggerWarning = useCallback((reason: string) => {
+        if (status !== "IN_PROGRESS" || isWarningActive) return;
+
+        setIsWarningActive(true);
+        setWarningReason(reason);
+        setWarningTimeLeft(WARNING_DURATION_SEC);
+        
+        const currentWarnings = warningsUsed + 1;
+        setWarningsUsed(currentWarnings);
+
+        if (currentWarnings > MAX_WARNINGS) {
+            applyPenalty("Max warnings exhausted.");
+            resolveWarning();
+            return;
+        }
+
+        if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+        warningTimerRef.current = setInterval(() => {
+            setWarningTimeLeft((prev) => {
+                if (prev <= 1) {
+                    applyPenalty("Warning timer exhausted.");
+                    resolveWarning();
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+    }, [status, isWarningActive, warningsUsed, applyPenalty, resolveWarning]);
+
+    const attemptAutoResolve = useCallback(() => {
+        if (!document.hidden && document.hasFocus() && document.fullscreenElement) {
+            resolveWarning();
+        }
+    }, [resolveWarning]);
+
+    // ==========================================
+    // AGGRESSIVE SECURITY LISTENERS
+    // ==========================================
     useEffect(() => {
         if (status !== "IN_PROGRESS") return;
 
-        // 1. Tab Switching / Minimizing
-        const handleVisibilityChange = () => {
-            if (document.hidden) {
-                triggerSecurityLock("Tab switching or window minimization detected.");
-            }
-        };
-
-        // 2. Exiting Fullscreen (Esc key)
-        const handleFullscreenChange = () => {
-            if (!document.fullscreenElement) {
-                triggerSecurityLock("Fullscreen mode was exited.");
-            }
-        };
-
-        // 3. Disable Context Menu (Right Click)
-        const handleContextMenu = (e: Event) => e.preventDefault();
-
-        // 4. Disable Copy/Paste
-        const handleCopyPaste = (e: Event) => e.preventDefault();
-
-        // 5. Warn on accidental reload/close
-        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+        // 1. Total Keyboard Blackout - Blocks EVERYTHING, triggers NO warnings.
+        const blockKeyboard = (e: KeyboardEvent) => {
             e.preventDefault();
-            e.returnValue = "Leaving this page will lock your exam. Are you sure?";
+            e.stopPropagation();
+            return false;
         };
 
+        // 2. Tab Switching / Minimizing
+        const handleVisibilityChange = () => {
+            if (document.hidden) triggerWarning("Tab switched or window minimized.");
+            else attemptAutoResolve(); 
+        };
+
+        // 3. Exiting Fullscreen
+        const handleFullscreenChange = () => {
+            if (!document.fullscreenElement) triggerWarning("Fullscreen mode exited.");
+            else attemptAutoResolve();
+        };
+
+        // 4. Focus Loss
+        const handleBlur = () => triggerWarning("Window lost focus.");
+        const handleFocus = () => attemptAutoResolve();
+
+        // 5. Block Context Menu & Copy/Paste
+        const blockEvent = (e: Event) => e.preventDefault();
+
+        // Attach Blackout Listeners (Capture Phase)
+        window.addEventListener("keydown", blockKeyboard, { capture: true });
+        window.addEventListener("keyup", blockKeyboard, { capture: true });
+        window.addEventListener("keypress", blockKeyboard, { capture: true });
+
+        // Attach Detection Listeners
         document.addEventListener("visibilitychange", handleVisibilityChange);
         document.addEventListener("fullscreenchange", handleFullscreenChange);
-        document.addEventListener("contextmenu", handleContextMenu);
-        document.addEventListener("copy", handleCopyPaste);
-        document.addEventListener("paste", handleCopyPaste);
-        window.addEventListener("beforeunload", handleBeforeUnload);
+        window.addEventListener("blur", handleBlur);
+        window.addEventListener("focus", handleFocus);
+        document.addEventListener("contextmenu", blockEvent);
+        document.addEventListener("copy", blockEvent);
+        document.addEventListener("paste", blockEvent);
 
         return () => {
+            window.removeEventListener("keydown", blockKeyboard, { capture: true });
+            window.removeEventListener("keyup", blockKeyboard, { capture: true });
+            window.removeEventListener("keypress", blockKeyboard, { capture: true });
             document.removeEventListener("visibilitychange", handleVisibilityChange);
             document.removeEventListener("fullscreenchange", handleFullscreenChange);
-            document.removeEventListener("contextmenu", handleContextMenu);
-            document.removeEventListener("copy", handleCopyPaste);
-            document.removeEventListener("paste", handleCopyPaste);
-            window.removeEventListener("beforeunload", handleBeforeUnload);
+            window.removeEventListener("blur", handleBlur);
+            window.removeEventListener("focus", handleFocus);
+            document.removeEventListener("contextmenu", blockEvent);
+            document.removeEventListener("copy", blockEvent);
+            document.removeEventListener("paste", blockEvent);
         };
-    }, [status, triggerSecurityLock]);
+    }, [status, triggerWarning, attemptAutoResolve]);
 
+    // ==========================================
+    // EXAM MAIN TIMER
+    // ==========================================
+    useEffect(() => {
+        if (status === "IN_PROGRESS") {
+            examTimerRef.current = setInterval(() => {
+                setRemainingSeconds((prev) => {
+                    if (prev <= 1) {
+                        handleSubmitExam(true);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        } else {
+            if (examTimerRef.current) clearInterval(examTimerRef.current);
+        }
+        return () => { if (examTimerRef.current) clearInterval(examTimerRef.current); };
+    }, [status, handleSubmitExam]);
+
+
+    // ==========================================
+    // ACTION HANDLERS
+    // ==========================================
     const handleStartExam = async () => {
         try {
-            // 1. Request Fullscreen FIRST
-            const docElm = document.documentElement;
-            if (docElm.requestFullscreen) {
-                await docElm.requestFullscreen();
-            }
-
-            // 2. Start the attempt on the backend
+            await document.documentElement.requestFullscreen();
             const response = await testattemptService.startTestAttempt(classroomId!, paperId!);
             
             if (response.success && response.data) {
                 setActiveAttemptId(response.data.id);
+
+                // BUG D FIX: Seed the timer from the server's authoritative value
+                // (accounts for accumulated pauseTime, not just raw duration)
+                try {
+                    const timerRes = await qpaperService.getTimerSync(classroomId!, paperId!);
+                    if (timerRes.success && timerRes.data?.remainingSeconds !== undefined) {
+                        setRemainingSeconds(timerRes.data.remainingSeconds);
+                    }
+                } catch {
+                    // Fallback to local duration if sync fails
+                    setRemainingSeconds((paperDetails?.duration || 60) * 60);
+                }
+
                 setStatus("IN_PROGRESS");
                 toast.success("Exam started. Good luck!");
             }
@@ -130,37 +275,87 @@ const CBTPlayer = () => {
         }
     };
 
-    const handleSubmitExam = async () => {
-        if (!activeAttemptId) return;
-
+    const manuallyRestoreFullscreen = async () => {
         try {
-            await testattemptService.submitTestAttempt(classroomId!, paperId!, activeAttemptId);
-            setStatus("SUBMITTED");
-            
-            if (document.fullscreenElement) {
-                await document.exitFullscreen().catch(console.error);
-            }
-            
-            toast.success("Exam submitted successfully!");
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || "Failed to submit exam.");
+            await document.documentElement.requestFullscreen();
+            attemptAutoResolve();
+        } catch (error) {
+            console.error("User must interact to enter fullscreen");
         }
     };
 
-    // --- RENDER HELPERS ---
+    const formatTime = (seconds: number) => {
+        const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+        const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+        const s = (seconds % 60).toString().padStart(2, '0');
+        return `${h}:${m}:${s}`;
+    };
 
-    if (status === "LOADING") {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <div className="space-y-4 w-full max-w-md">
-                    <Skeleton className="h-8 w-3/4 mx-auto" />
-                    <Skeleton className="h-4 w-1/2 mx-auto" />
-                    <Skeleton className="h-64 w-full mt-8" />
-                </div>
-            </div>
-        );
-    }
+    // ==========================================
+    // ANSWER INPUT HANDLERS
+    // ==========================================
+    const handleMCQSelect = (questionId: string, optionId: string) => {
+        setLocalAnswers(prev => ({ ...prev, [questionId]: optionId }));
+        syncAnswerToServer(questionId, { selectedOptionId: optionId });
+    };
 
+    const handleMSQSelect = (questionId: string, optionId: string) => {
+        setLocalAnswers(prev => {
+            const currentArr = prev[questionId] || [];
+            const isChecked = currentArr.includes(optionId);
+            const newArr = isChecked ? currentArr.filter((id: string) => id !== optionId) : [...currentArr, optionId];
+            syncAnswerToServer(questionId, { selectedOptionId: newArr });
+            return { ...prev, [questionId]: newArr };
+        });
+    };
+
+    const handleNATKeypad = (questionId: string, key: string | number) => {
+        setLocalAnswers(prev => {
+            const currentVal = prev[questionId] ? String(prev[questionId]) : "";
+            let newVal = currentVal;
+            
+            if (key === 'Del') {
+                newVal = currentVal.slice(0, -1);
+            } else if (key === '-' && currentVal === "") {
+                newVal = "-";
+            } else if (key === '.' && !currentVal.includes('.')) {
+                newVal += '.';
+            } else if (typeof key === 'number') {
+                newVal += key;
+            }
+
+            const numVal = parseFloat(newVal);
+            if (!isNaN(numVal) || newVal === "") {
+                syncAnswerToServer(questionId, { numericalAnswer: newVal === "" ? null : numVal });
+            }
+
+            return { ...prev, [questionId]: newVal };
+        });
+    };
+
+    // ==========================================
+    // NAVIGATION HANDLERS
+    // ==========================================
+    const navigateToQuestion = (index: number) => {
+        setCurrentIndex(index);
+        const qId = paperDetails.questions[index].id;
+        setVisitedQuestions(prev => new Set(prev).add(qId));
+    };
+
+    const isQuestionAnswered = (qId: string) => {
+        const ans = localAnswers[qId];
+        if (ans === undefined || ans === null) return false;
+        if (typeof ans === "string" && ans.trim() === "") return false;
+        if (Array.isArray(ans) && ans.length === 0) return false;
+        return true;
+    };
+
+
+    // ==========================================
+    // RENDER SCREENS
+    // ==========================================
+    if (status === "LOADING") return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Skeleton className="h-64 w-full max-w-md" /></div>;
+    
     if (status === "STANDBY") {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
@@ -180,45 +375,15 @@ const CBTPlayer = () => {
                             </div>
                             <ul className="text-amber-800 text-sm space-y-2 list-disc pl-5 font-medium">
                                 <li>The exam requires <strong>Fullscreen Mode</strong>.</li>
-                                <li>Do not press the <strong>Esc</strong> key.</li>
                                 <li>Do not <strong>switch tabs</strong>, open other applications, or minimize the browser.</li>
-                                <li>Right-clicking, copying, and pasting are disabled.</li>
+                                <li><strong>Keyboard is completely disabled.</strong> Use the mouse to interact.</li>
                             </ul>
                             <p className="text-xs text-amber-700 mt-4 border-t border-amber-200 pt-3">
-                                Violating any of these rules will instantly lock your exam and notify your tutor via the Pause/Resume algorithm.
+                                Violations trigger a countdown. Failing to return to fullscreen/focus in time applies a <strong>10-minute penalty</strong>.
                             </p>
                         </div>
-
                         <Button size="lg" className="w-full text-lg h-14 bg-indigo-600 hover:bg-indigo-700" onClick={handleStartExam}>
                             I Understand &mdash; Start Exam
-                        </Button>
-                    </CardContent>
-                </Card>
-            </div>
-        );
-    }
-
-    if (status === "LOCKED") {
-        return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-red-50 p-4">
-                <Card className="max-w-lg w-full border-red-200 shadow-2xl">
-                    <CardContent className="pt-10 pb-8 px-8 text-center space-y-6">
-                        <div className="mx-auto bg-red-100 w-20 h-20 rounded-full flex items-center justify-center">
-                            <FiLock className="h-10 w-10 text-red-600" />
-                        </div>
-                        <h2 className="text-3xl font-black text-red-700 uppercase tracking-tight">Exam Locked</h2>
-                        
-                        <div className="bg-white p-4 rounded-lg border border-red-100 text-left">
-                            <p className="text-sm text-slate-500 font-medium uppercase tracking-wider mb-1">Reason for lock:</p>
-                            <p className="text-slate-900 font-semibold">{lockReason}</p>
-                        </div>
-
-                        <p className="text-red-800 text-sm font-medium">
-                            Your attempt has been paused securely. You cannot continue until a Tutor reviews your activity and unlocks your exam from the dashboard.
-                        </p>
-
-                        <Button variant="outline" className="w-full" onClick={() => navigate(`/dashboard/classrooms/${classroomId}`)}>
-                            Return to Classroom
                         </Button>
                     </CardContent>
                 </Card>
@@ -232,7 +397,6 @@ const CBTPlayer = () => {
                 <div className="text-center space-y-6 max-w-md">
                     <FiCheckCircle className="h-24 w-24 text-green-500 mx-auto" />
                     <h2 className="text-3xl font-bold text-slate-900">Exam Submitted!</h2>
-                    <p className="text-slate-600">Your responses have been securely saved and sent to the grading engine.</p>
                     <Button onClick={() => navigate(`/dashboard/classrooms/${classroomId}`)} className="bg-green-600 hover:bg-green-700">
                         Return to Dashboard
                     </Button>
@@ -241,59 +405,212 @@ const CBTPlayer = () => {
         );
     }
 
-    // --- IN_PROGRESS VIEW ---
+    // ==========================================
+    // IN_PROGRESS VIEW
+    // ==========================================
+    const questions = paperDetails?.questions || [];
+    const currentQuestion = questions[currentIndex];
+
     return (
-        <div className="min-h-screen bg-slate-100 flex flex-col select-none">
-            {/* Secure Header */}
-            <header className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between sticky top-0 z-50 shadow-md">
+        <div className={`min-h-screen flex flex-col select-none transition-all ${isWarningActive ? 'bg-red-50' : 'bg-slate-100'}`}>
+            
+            {/* INTRUSIVE RED BORDER FOR WARNINGS */}
+            {isWarningActive && (
+                <div className="fixed inset-0 border-[12px] border-red-600 z-[100] pointer-events-none animate-pulse"></div>
+            )}
+
+            {/* WARNING BANNER */}
+            {isWarningActive && (
+                <div className="bg-red-600 text-white px-6 py-4 flex items-center justify-between shadow-lg relative z-50">
+                    <div className="flex items-center gap-3">
+                        <FiAlertTriangle className="h-8 w-8 animate-bounce" />
+                        <div>
+                            <h2 className="font-bold text-lg uppercase tracking-wider">Security Violation: {warningReason}</h2>
+                            <p className="text-sm font-medium">Return to the exam screen immediately. Penalty applies in {String(warningTimeLeft).padStart(2, '0')}s.</p>
+                        </div>
+                    </div>
+                    
+                    {!document.fullscreenElement && (
+                        <Button onClick={manuallyRestoreFullscreen} variant="secondary" className="font-bold border-2 border-white">
+                            Click to Resume Fullscreen
+                        </Button>
+                    )}
+                </div>
+            )}
+
+            <header className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between sticky top-0 z-40 shadow-md">
                 <div className="flex items-center gap-3">
                     <FiShield className="h-6 w-6 text-emerald-400" />
                     <div>
                         <h1 className="font-bold text-lg leading-tight">{paperDetails?.title || "Examination in Progress"}</h1>
-                        <p className="text-xs text-slate-400 font-medium tracking-wider">SECURE ENVIRONMENT ACTIVE</p>
+                        <p className="text-xs text-slate-400 font-medium tracking-wider">SECURE ENVIRONMENT &bull; WARNINGS: {warningsUsed}/{MAX_WARNINGS}</p>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-6">
-                    {/* Timer Placeholder */}
                     <div className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-lg border border-slate-700">
-                        <FiClock className="h-5 w-5 text-amber-400" />
-                        <span className="font-mono text-xl font-bold tracking-widest">
-                            --:--:--
+                        <FiClock className={`h-5 w-5 ${remainingSeconds < 300 ? 'text-red-500 animate-pulse' : 'text-amber-400'}`} />
+                        <span className={`font-mono text-xl font-bold tracking-widest ${remainingSeconds < 300 ? 'text-red-500' : 'text-white'}`}>
+                            {formatTime(remainingSeconds)}
                         </span>
                     </div>
 
-                    <Button variant="destructive" onClick={handleSubmitExam}>
-                        Finish & Submit
+                    <Button variant="destructive" onClick={() => handleSubmitExam(false)}>
+                        Finish Exam
                     </Button>
                 </div>
             </header>
 
-            {/* Exam Content Area */}
-            <main className="flex-1 max-w-5xl w-full mx-auto p-6 flex flex-col mt-4 gap-6">
-                <Card className="flex-1 shadow-sm border-slate-200">
-                    <CardHeader className="border-b border-slate-100 bg-slate-50/50">
-                        <CardTitle className="text-lg text-slate-700 flex justify-between">
-                            <span>Question 1</span>
-                            <span className="text-sm font-normal bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full">+4 Marks</span>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-8">
-                        <p className="text-lg text-slate-900 font-medium mb-8">
-                            (Question content and options will be rendered here based on the active question index from your backend API...)
-                        </p>
-                        
-                        {/* Placeholder for Options */}
-                        <div className="space-y-3">
-                            {[1, 2, 3, 4].map((i) => (
-                                <div key={i} className="p-4 border rounded-lg hover:bg-slate-50 cursor-pointer transition-colors border-slate-200">
-                                    Option {i}
+            <main className="flex-1 max-w-5xl w-full mx-auto p-6 flex flex-col mt-4 gap-6 relative z-10 pb-32">
+                {currentQuestion ? (
+                    <Card className="flex-1 shadow-sm border-slate-200">
+                        <CardHeader className="border-b border-slate-100 bg-slate-50/50">
+                            <CardTitle className="text-lg text-slate-700 flex justify-between">
+                                <span>Question {currentIndex + 1} of {questions.length}</span>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-sm font-bold bg-slate-200 text-slate-600 px-3 py-1 rounded-full uppercase tracking-wider">{currentQuestion.type}</span>
+                                    <span className="text-sm font-normal bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full">+{currentQuestion.marks} Marks</span>
                                 </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
+                            </CardTitle>
+                        </CardHeader>
+                        
+                        <CardContent className="p-8">
+                            <p className="text-lg text-slate-900 font-medium mb-8 whitespace-pre-wrap">
+                                {currentQuestion.text}
+                            </p>
+                            
+                            {/* PURE REACT MCQ RENDER */}
+                            {currentQuestion.type === "MCQ" && (
+                                <div className="space-y-3">
+                                    {currentQuestion.options.map((opt: any) => {
+                                        const isSelected = localAnswers[currentQuestion.id] === opt.id;
+                                        return (
+                                            <div 
+                                                key={opt.id} 
+                                                onClick={() => handleMCQSelect(currentQuestion.id, opt.id)}
+                                                className={`flex items-center space-x-3 p-4 border rounded-lg cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500' : 'hover:bg-slate-50 border-slate-200'}`}
+                                            >
+                                                <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 ${isSelected ? 'border-indigo-600' : 'border-slate-300'}`}>
+                                                    {isSelected && <div className="h-2.5 w-2.5 rounded-full bg-indigo-600" />}
+                                                </div>
+                                                <span className={`text-base font-medium ${isSelected ? 'text-indigo-900' : 'text-slate-700'}`}>{opt.text}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* PURE REACT MSQ RENDER */}
+                            {currentQuestion.type === "MSQ" && (
+                                <div className="space-y-3">
+                                    {currentQuestion.options.map((opt: any) => {
+                                        const isChecked = (localAnswers[currentQuestion.id] || []).includes(opt.id);
+                                        return (
+                                            <div 
+                                                key={opt.id} 
+                                                onClick={() => handleMSQSelect(currentQuestion.id, opt.id)}
+                                                className={`flex items-center space-x-3 p-4 border rounded-lg cursor-pointer transition-colors ${isChecked ? 'bg-emerald-50 border-emerald-500 ring-1 ring-emerald-500' : 'hover:bg-slate-50 border-slate-200'}`}
+                                            >
+                                                <div className={`h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 ${isChecked ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300'}`}>
+                                                    {isChecked && <FiCheckCircle className="text-white h-3 w-3" />}
+                                                </div>
+                                                <span className={`text-base font-medium ${isChecked ? 'text-emerald-900' : 'text-slate-700'}`}>{opt.text}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* NAT RENDER & VIRTUAL KEYPAD */}
+                            {currentQuestion.type === "NAT" && (
+                                <div className="mt-4 pt-6 border-t border-slate-200 max-w-sm">
+                                    <div className="bg-slate-100 border border-slate-300 rounded-lg p-4 mb-6 text-2xl font-mono text-center tracking-widest min-h-[64px] flex items-center justify-center">
+                                        {localAnswers[currentQuestion.id] !== undefined ? localAnswers[currentQuestion.id] : ""}
+                                        <span className="animate-pulse ml-1 text-slate-400">|</span>
+                                    </div>
+                                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-wider text-center">Virtual Keypad</h4>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, '.', 0, 'Del', '-'].map(key => (
+                                            <Button 
+                                                key={key} 
+                                                variant="outline" 
+                                                className={`h-14 text-xl font-mono shadow-sm ${key === 'Del' ? 'text-red-500 border-red-200' : 'text-slate-700'} ${key === '-' ? 'col-span-3' : ''}`}
+                                                onClick={() => handleNATKeypad(currentQuestion.id, key)}
+                                            >
+                                                {key}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <div className="flex-1 flex items-center justify-center"><Skeleton className="h-64 w-full" /></div>
+                )}
             </main>
+
+            {/* FIXED BOTTOM QUESTION NAVIGATOR */}
+            <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40 px-4 py-3">
+                <div className="max-w-5xl mx-auto flex items-center gap-4">
+                    
+                    <Button 
+                        variant="outline" 
+                        size="icon"
+                        disabled={currentIndex === 0} 
+                        onClick={() => navigateToQuestion(currentIndex - 1)} 
+                        className="shrink-0"
+                    >
+                        <FiChevronLeft className="h-5 w-5" />
+                    </Button>
+
+                    <div className="flex-1 flex items-center gap-3 overflow-x-auto no-scrollbar py-2 px-1">
+                        {questions.map((q: any, i: number) => {
+                            const answered = isQuestionAnswered(q.id);
+                            const visited = visitedQuestions.has(q.id);
+                            const isCurrent = i === currentIndex;
+
+                            let colorClasses = "bg-white text-slate-900 border-slate-300"; // Unvisited
+                            if (answered) {
+                                colorClasses = "bg-green-200 text-green-700 border-green-700";
+                            } else if (visited) {
+                                colorClasses = "bg-red-200 text-red-700 border-red-700";
+                            }
+
+                            return (
+                                <button
+                                    key={q.id}
+                                    onClick={() => navigateToQuestion(i)}
+                                    className={`
+                                        shrink-0 h-10 w-10 rounded-full border-2 font-bold text-sm transition-all flex items-center justify-center
+                                        ${colorClasses}
+                                        ${isCurrent ? 'ring-2 ring-offset-2 ring-indigo-500 scale-110 shadow-md' : 'hover:scale-105'}
+                                    `}
+                                >
+                                    {i + 1}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    <Button 
+                        variant="outline" 
+                        size="icon"
+                        disabled={currentIndex === questions.length - 1} 
+                        onClick={() => navigateToQuestion(currentIndex + 1)} 
+                        className="shrink-0"
+                    >
+                        <FiChevronRight className="h-5 w-5" />
+                    </Button>
+                    
+                </div>
+            </div>
+
+            {/* Add global styles to hide scrollbar for the navigator while keeping it functional */}
+            <style dangerouslySetInnerHTML={{__html: `
+                .no-scrollbar::-webkit-scrollbar { display: none; }
+                .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+            `}} />
         </div>
     );
 };

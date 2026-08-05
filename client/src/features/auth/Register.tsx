@@ -64,20 +64,22 @@ const Register = () => {
     // 3. Handle the submission
     const onSubmit = async (values: RegisterFormValues) => {
         try {
-            setIsLoading(true);
-            const { confirmPassword, ...registerData } = values;      
-            const response = await authService.register(registerData);
+            setIsLoading(true);  
+            const response = await authService.register({
+                fullName: values.fullName,
+                email: values.email,
+                password: values.password,
+                accountType: values.accountType,
+            });
 
-            if(response.success) {
+            if(response.success && response.data) {
+                localStorage.setItem("accessToken", response.data.accessToken);
                 dispatch(setCredentials({ 
                     user: response.data.user, 
                     accessToken: response.data.accessToken 
                 }));
                 toast.success(response.message|| "Registration successful!");
-                navigate("/dashboard");
-            } else {
-                toast.success("Account created successfully! Please log in.");
-                navigate("/login");
+                navigate("/dashboard", { replace: true });
             }
         } catch (error: any) {
             toast.error(error.response?.data?.message || "Registration failed. Please try again.");
@@ -238,7 +240,8 @@ const Register = () => {
                                 variant="outline" 
                                 className="w-full gap-2"
                                 onClick={() => {
-                                    const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+                                    // Point directly to the backend absolute URL to avoid Vite proxy drops
+                                    const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
                                     window.location.href = `${BASE_URL}/auth/google`;
                                 }}
                             >

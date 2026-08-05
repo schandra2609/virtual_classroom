@@ -14,7 +14,7 @@ import {
     NotFoundError,
 } from "../utils/Error.ts";
 import { prisma } from "../configs/database.config.ts";
-import { deleteFile, uploadBuffer } from "../services/storage.service.ts";
+import { deleteFile, getPresignedUrl, uploadBuffer } from "../services/storage.service.ts";
 import { notifyNewAnnouncement } from "../services/socket.service.ts";
 import { sendMaterialNotification } from "../services/email.service.ts";
 import { ENV_CONFIG } from "../configs/env.config.ts";
@@ -51,9 +51,28 @@ export const getAnnouncements = async (
             orderBy: { createdAt: "desc" },
         });
 
+        const formattedAnnouncements = await Promise.all(
+            announcements.map(async (announcement) => {
+                if (announcement.author?.profilePhotoUrl && !announcement.author.profilePhotoUrl.startsWith("http")) {
+                    announcement.author.profilePhotoUrl = await getPresignedUrl(announcement.author.profilePhotoUrl);
+                }
+                if (announcement.attachments && announcement.attachments.length > 0) {
+                    announcement.attachments = await Promise.all(
+                        announcement.attachments.map(async (attachment) => {
+                            if (attachment.url && !attachment.url.startsWith("http")) {
+                                attachment.url = await getPresignedUrl(attachment.url);
+                            }
+                            return attachment;
+                        })
+                    );
+                }
+                return announcement;
+            })
+        );
+
         res.status(200).json({
             success: true,
-            data: announcements,
+            data: formattedAnnouncements,
             message: "Announcements retrieved successfully",
         });
     } catch (error) {
@@ -80,25 +99,22 @@ export const createAnnouncement = async (
     next: NextFunction,
 ): Promise<void> => {
     try {
-        const { classroomId } = req.params as { classroomId: string };
         const authorId = req.user?.id as string;
-        const { message } = req.body as { message: string };
+        const { classroomId } = req.params as { classroomId: string };
+        const message = req.body.message as string | undefined;
+        const files = req.files as Express.Multer.File[];
 
         /** @section Validation */
-        if (![classroomId, message].every((field) => field.trim())) {
-            throw new BadRequestError(
-                "Announcement message, classroom ID are required.",
-            );
+        if (!classroomId || !message || message.trim().length === 0) {
+            throw new BadRequestError("A text message and classroom ID are strictly required to post an announcement.");
         }
-
-        const files = req.files as Express.Multer.File[];
 
         /** @section Atomic Transaction */
         const announcement: any = await prisma.$transaction(async (txn) => {
             // Step 1: Create Announcement
             const newAnnouncement = await txn.announcement.create({
                 data: {
-                    message: message?.trim(),
+                    message: message.trim(),
                     classroomId: classroomId.trim(),
                     authorId: authorId.trim(),
                 },

@@ -21,6 +21,15 @@ export const userService = {
     },
 
     /**
+     * @route DELETE /api/v1/users/me
+     * @description Deletes the current authenticated user's account permanently
+     */
+    deleteUser: async (): Promise<ApiResponse<null>> => {
+        const response = await API.delete('/users/me');
+        return response.data;
+    },
+
+    /**
      * @route PATCH /api/v1/users/me/change-password
      * @description Logic for authenticated password rotation
      */
@@ -52,20 +61,20 @@ export const userService = {
     },
 
     /**
-     * @route POST /api/v1/users/me/send-verification-otp
+     * @route POST /api/v1/users/me/send-otp
      * @description Triggers the 2FA/Email verification process
      */
-    sendVerificationOtp: async (): Promise<ApiResponse<null>> => {
-        const response = await API.post('/users/me/send-verification-otp');
+    sendOtp: async (data: { purpose: string }): Promise<ApiResponse<null>> => {
+        const response = await API.post('/users/me/send-otp', data);
         return response.data;
     },
 
     /**
-     * @route POST /api/v1/users/me/verify-email
-     * @description Submits the OTP to complete email verification
+     * @route POST /api/v1/users/me/verify-otp
+     * @description Submits the OTP to verify any action
      */
-    verifyEmail: async (data: VerifyEmailData): Promise<ApiResponse<null>> => {
-        const response = await API.post('/users/me/verify-email', data);
+    verifyOtp: async (data: VerifyEmailData): Promise<ApiResponse<null>> => {
+        const response = await API.post('/users/me/verify-otp', data);
         return response.data;
     }
 };

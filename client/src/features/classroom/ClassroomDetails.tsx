@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { FiArrowLeft, FiFileText, FiUsers } from "react-icons/fi";
+import { FiArrowLeft, FiFileText, FiUsers, FiInfo } from "react-icons/fi";
 import { BsMegaphone } from "react-icons/bs";
 import { toast } from "sonner";
 
 // Redux & Services
+import { useAppSelector } from "@/hooks/redux";
 import { classroomService } from "@/api/classroom.service";
 import type { Classroom } from "@/api/types";
 import { useClassroomSocket } from "@/hooks/useClassroomSocket";
@@ -15,15 +16,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Sub-components
-import StreamTab from "./StreamTab";
-import ClassworkTab from "./ClassworkTab";
-import PeopleTab from "./PeopleTab";
+import StreamTab from "@/features/classroom/StreamTab";
+import ClassworkTab from "@/features/classroom/ClassworkTab";
+import PeopleTab from "@/features/classroom/PeopleTab";
 
 const ClassroomDetails = () => {
     const { id: classroomId } = useParams<{ id: string }>();
+    const { user } = useAppSelector((state) => state.auth);
+    
     useClassroomSocket(classroomId);
     
-    const [classroom, setClassroom] = useState<Classroom | null>(null);
+    const [classroom, setClassroom] = useState<(Classroom & { members?: any[] }) | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -31,7 +34,7 @@ const ClassroomDetails = () => {
             if (!classroomId) return;
             try {
                 const response = await classroomService.getClassroomById(classroomId);
-                if (response.success) {
+                if (response.success && response.data) {
                     setClassroom(response.data);
                 }
             } catch (error: any) {
@@ -46,7 +49,7 @@ const ClassroomDetails = () => {
 
     if (isLoading) {
         return (
-            <div className="space-y-6">
+            <div className="space-y-6 max-w-5xl mx-auto w-full">
                 <Skeleton className="h-48 w-full rounded-xl" />
                 <Skeleton className="h-10 w-full max-w-md" />
                 <Skeleton className="h-64 w-full rounded-xl" />
@@ -66,21 +69,35 @@ const ClassroomDetails = () => {
         );
     }
 
-    return (
-        <div className="space-y-6 max-w-5xl mx-auto">
-            
-            {/* Back Button & Header */}
-            <div>
-                <Button variant="ghost" asChild className="mb-4 -ml-4 text-slate-500 hover:text-slate-900">
-                    <Link to="/dashboard">
-                        <FiArrowLeft className="mr-2 h-4 w-4" />
-                        Back to Dashboard
-                    </Link>
-                </Button>
+    const currentUserMember = classroom.members?.find((m: any) => m.userId === user?.id);
+    const currentUserRole = currentUserMember?.role;
 
-                {/* Hero Banner */}
-                <div className="relative h-48 rounded-xl bg-primary/10 border border-slate-200 overflow-hidden flex flex-col justify-end p-6 sm:p-8">
-                    <div className="relative z-10">
+    return (
+        <div className="flex flex-col h-full w-full max-w-5xl mx-auto gap-6 min-h-0">
+            {/* 🚨 CHANGED: Banner now contains the buttons inside it */}
+            <div className="shrink-0">
+                <div className="relative h-48 rounded-xl bg-primary/10 border border-slate-200 overflow-hidden flex flex-col p-4 sm:p-6">
+                    
+                    {/* Top Row of Banner: Navigation & Settings Buttons */}
+                    <div className="flex items-center justify-between relative z-20 w-full">
+                        <Button variant="ghost" size="icon" asChild className="text-slate-700 hover:text-slate-900 hover:bg-black/5 rounded-full h-10 w-10">
+                            <Link to="/dashboard">
+                                <FiArrowLeft className="h-5 w-5" />
+                            </Link>
+                        </Button>
+
+                        {/* STRICT RBAC: Only Creator and Co-Tutors can see Info */}
+                        {(currentUserRole === "CREATOR" || currentUserRole === "CO_TUTOR") && (
+                            <Button variant="ghost" size="icon" asChild className="text-slate-700 hover:text-slate-900 hover:bg-black/5 rounded-full h-10 w-10">
+                                <Link to={`/dashboard/classrooms/${classroomId}/info`}>
+                                    <FiInfo className="h-5 w-5" />
+                                </Link>
+                            </Button>
+                        )}
+                    </div>
+
+                    {/* Bottom Row of Banner: Classroom Details */}
+                    <div className="relative z-10 mt-auto px-2">
                         <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
                             {classroom.name}
                         </h1>
@@ -91,11 +108,9 @@ const ClassroomDetails = () => {
                 </div>
             </div>
 
-            {/* Main Content Tabs */}
-            <Tabs defaultValue="stream" className="flex flex-col w-full">
-                
-                {/* Tab Navigation Menu */}
-                <div className="w-full flex justify-start mb-6">
+            {/* Tabs Component (Unchanged) */}
+            <Tabs defaultValue="stream" className="flex flex-col flex-1 overflow-hidden min-h-0 w-full">
+                <div className="w-full flex justify-start mb-4 shrink-0">
                     <TabsList className="grid w-full grid-cols-3 h-12 items-center bg-slate-200/50">
                         <TabsTrigger value="stream" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
                             <BsMegaphone className="mr-2 h-4 w-4 hidden sm:inline-block" />
@@ -112,18 +127,15 @@ const ClassroomDetails = () => {
                     </TabsList>
                 </div>
 
-                {/* Stream Content */}
-                <TabsContent value="stream" className="w-full focus-visible:outline-none focus-visible:ring-0">
+                <TabsContent value="stream" className="flex-1 overflow-hidden data-[state=active]:flex flex-col m-0 outline-none min-h-0">
                     <StreamTab classroom={classroom} />
                 </TabsContent>
 
-                {/* Classwork Content */}
-                <TabsContent value="classwork" className="w-full focus-visible:outline-none focus-visible:ring-0">
+                <TabsContent value="classwork" className="flex-1 overflow-y-auto m-0 outline-none pr-2 pb-6 min-h-0">
                     <ClassworkTab classroom={classroom} />
                 </TabsContent>
 
-                {/* People Content */}
-                <TabsContent value="people" className="w-full focus-visible:outline-none focus-visible:ring-0">
+                <TabsContent value="people" className="flex-1 overflow-y-auto m-0 outline-none pr-2 pb-6 min-h-0">
                     <PeopleTab classroom={classroom} />
                 </TabsContent>
             </Tabs>

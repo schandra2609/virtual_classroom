@@ -24,62 +24,64 @@ const router: Router = Router({ mergeParams: true });
 
 /**
  * @section Collective Paper Management
- * URL: /
+ * @url /api/v1/classrooms/:classroomId/papers
  */
 router
     .route("/")
     /**
-     * @route GET /
+     * @route GET /api/v1/classrooms/:classroomId/papers
      * @description Fetch all papers. Applied filters ensure students only see live papers.
      */
     .get(qpaperController.getAllQuestionPapers as any)
     /**
-     * @route POST /
+     * @route POST /api/v1/classrooms/:classroomId/papers
      * @description Create a new draft/scheduled paper. Access: Tutor only.
      */
     .post(isClassroomTutor as any, qpaperController.createQuestionPaper as any);
 
 /**
  * @section Specific Paper Management
- * URL: /:paperId
+ * @url /api/v1/classrooms/:classroomId/papers/:paperId
  */
 router
     .route("/:paperId")
     /**
-     * @route GET /:paperId
+     * @route GET /api/v1/classrooms/:classroomId/papers/:paperId
      * @description Fetch full paper structure. Automatically sanitizes answers for students.
      */
     .get(qpaperController.getQuestionPaperById as any)
     /**
-     * @route PATCH /:paperId
+     * @route PATCH /api/v1/classrooms/:classroomId/papers/:paperId
      * @description Update paper settings (Title, Schedule, Duration). Access: Tutor only.
      */
     .patch(isClassroomTutor as any, qpaperController.updateQuestionPaper as any)
     /**
-     * @route DELETE /:paperId
+     * @route DELETE /api/v1/classrooms/:classroomId/papers/:paperId
      * @description Permanently remove the paper and related records. Access: Tutor only.
      */
-    .delete(
-        isClassroomTutor as any,
-        qpaperController.deleteQuestionPaper as any,
-    );
+    .delete(isClassroomTutor as any, qpaperController.deleteQuestionPaper as any);
 
 /**
- * @route GET /:paperId/timer
+ * @url /api/v1/classrooms/:classroomId/papers/:paperId/timer
  * @description Sync endpoint for students to get the exact server-side remaining time.
- * Frontend polls this.
  */
 router
     .route("/:paperId/timer")
+    /**
+     * @route GET /api/v1/classrooms/:classroomId/papers/:paperId/timer
+     * @description Sync endpoint for students to get the exact server-side remaining time.
+     */
     .get(isClassroomStudent as any, qpaperController.getTimerSync as any);
 
 /**
- * @route PATCH /:paperId/status
- * @description Change status (LIVE, PAUSE, CANCEL).
- * Access: Tutor only.
+ * @url /api/v1/classrooms/:classroomId/papers/:paperId/status
  */
 router
     .route("/:paperId/status")
+    /**
+     * @route PATCH /api/v1/classrooms/:classroomId/papers/:paperId/status
+     * @description Change status (LIVE, PAUSE, CANCEL). Access: Tutor only.
+     */
     .patch(isClassroomTutor as any, qpaperController.changePaperStatus as any);
 
 /**

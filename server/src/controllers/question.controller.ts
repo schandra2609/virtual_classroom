@@ -11,6 +11,9 @@ import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import type { Option, QuestionType } from "../../generated/prisma/client.ts";
 import { BadRequestError } from "../utils/Error.ts";
 import { prisma } from "../configs/database.config.ts";
+import { buildQuestionGenerationPrompt, getMinioObjectBuffer } from "../utils/prompts.ts";
+import { genaiService } from "../services/genai.service.ts";
+import { PDFParse } from "pdf-parse";
 
 /**
  * @async
@@ -218,6 +221,133 @@ export const deleteQuestion = async (
         res.status(200).json({
             success: true,
             message: "Question deleted successfully.",
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @async
+ * @function generateAIQuestions
+ * @description Downloads selected files, parses text via pdf-parse, 
+ * constructs a context-aware prompt, and routes it through Ollama.
+ */
+export const generateAIQuestions = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+): Promise<void> => {
+    try {
+        const { paperId } = req.params;
+        const { 
+            subject,
+            contextFiles = [], 
+            difficulty = "Medium", 
+            config, 
+            customPrompt 
+        } = req.body;
+
+        if (!subject?.trim()) {
+            throw new BadRequestError("Subject/Topic is required to generate questions.");
+        }
+
+        const mcqCount = config?.mcq?.count || 0;
+        const msqCount = config?.msq?.count || 0;
+        const natCount = config?.nat?.count || 0;
+        const totalQuestions = mcqCount + msqCount + natCount;
+
+        if (totalQuestions === 0) {
+            throw new BadRequestError("You must request at least one question to generate.");
+        }
+
+        // 1. Fetch URLs, convert to Buffers, and Extract Text
+        let combinedExtractedText = "";
+        
+        if (Array.isArray(contextFiles) && contextFiles.length > 0) {
+            for (const url of contextFiles) {
+                try {
+                    const fileRes = await fetch(url);
+                    if (!fileRes.ok) throw new Error(`Failed to fetch file at ${url}`);
+                    const arrayBuffer = await fileRes.arrayBuffer();
+                    const buffer = Buffer.from(arrayBuffer);
+                    
+                    // Parse text from the PDF buffer
+                    const parser = new PDFParse({ data: buffer });
+                    const parsedPdf = await parser.getText();
+                    combinedExtractedText += `\n--- Document ---\n${parsedPdf.text}\n`;
+                    await parser.destroy();
+                } catch (error) {
+                    console.error("Failed to download or parse context file:", error);
+                    // Skip broken files but continue with the rest to avoid failing the whole request
+                }
+            }
+        }
+
+        // 2. Build the precise prompt with the extracted text
+        const prompt = buildQuestionGenerationPrompt({
+            subject,
+            mcqCount,
+            msqCount,
+            natCount,
+            difficulty,
+            customPrompt,
+            contextText: combinedExtractedText.trim()
+        });
+
+        // 3. Request generation from Ollama (passing empty buffer array as Llama3 uses prompt text)
+        let generatedQuestions = await genaiService.generateQuestions(prompt);
+
+        if (!Array.isArray(generatedQuestions) && generatedQuestions !== null && typeof generatedQuestions === "object") {
+            console.log("AI wrapped response in an object. Normalizing data structure...");
+            
+            // Look for any key that holds an array (like "questions", "test_bank", "data", etc.)
+            const implicitArrayKey = Object.keys(generatedQuestions).find(
+                (key) => Array.isArray((generatedQuestions as any)[key])
+            );
+            
+            if (implicitArrayKey) {
+                generatedQuestions = (generatedQuestions as any)[implicitArrayKey];
+            } else {
+                // If it's a single question object instead of an array, wrap it in an array
+                generatedQuestions = [generatedQuestions];
+            }
+        }
+
+        // Final safety fallback
+        if (!Array.isArray(generatedQuestions)) {
+            throw new Error("AI failed to provide questions in a recognizable list layout.");
+        }
+        
+        // 4. Post-processing: Inject the marks designated by the tutor
+        generatedQuestions = generatedQuestions.map((q: any) => {
+            let assignedMarks = 1;
+            // Support both uppercase from prompt or lowercase variants from smaller models safely
+            const typeUpper = String(q.type || q.question_type || "").toUpperCase();
+            
+            if (typeUpper === "MCQ") assignedMarks = config?.mcq?.marks || 1;
+            if (typeUpper === "MSQ") assignedMarks = config?.msq?.marks || 1;
+            if (typeUpper === "NAT") assignedMarks = config?.nat?.marks || 1;
+            
+            return {
+                text: q.text || q.question || "", // Map 'question' to 'text' if model used standard naming
+                type: typeUpper === "MCQ" || typeUpper === "MSQ" || typeUpper === "NAT" ? typeUpper : "MCQ",
+                options: Array.isArray(q.options) ? q.options.map((o: any) => {
+                    // Check if option is a string or an object to map to the editor seamlessly
+                    if (typeof o === "string") {
+                        return { text: o, isCorrect: String(q.answer).toUpperCase() === o.toUpperCase() };
+                    }
+                    return { text: o.text || "", isCorrect: !!o.isCorrect };
+                }) : [],
+                numericalCorrectAnswer: q.numericalCorrectAnswer !== undefined ? q.numericalCorrectAnswer : q.answer,
+                marks: assignedMarks
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            data: generatedQuestions,
+            message: `Successfully generated ${generatedQuestions.length} AI questions.`
         });
     } catch (error) {
         next(error);

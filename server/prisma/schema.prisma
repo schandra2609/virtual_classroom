@@ -161,25 +161,26 @@ model ClassroomInvitation {
 
 
 model QuestionPaper {
-  id        String   @id @default(cuid())
-  title     String
-  liveAt    DateTime
-  duration  Int
-  status    QuestionPaperStatus @default(SCHEDULED)
+  id                  String              @id @default(cuid())
+  title               String
+  liveAt              DateTime
+  duration            Int
+  status              QuestionPaperStatus @default(SCHEDULED)
+  negativeMarking     Boolean             @default(false)
 
-  pauseTime       Int         @default(0)
-  lastPausedAt    DateTime?
+  pauseTime           Int             @default(0)
+  lastPausedAt        DateTime?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
-  creatorId   String
-  classroomId String
-  creator       User          @relation(fields: [creatorId], references: [id], onDelete: Cascade)
-  classroom     Classroom     @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  creatorId           String
+  classroomId         String
+  creator             User            @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  classroom           Classroom       @relation(fields: [classroomId], references: [id], onDelete: Cascade)
   
-  questions     Question[]
-  attempts      TestAttempt[]
+  questions           Question[]
+  attempts            TestAttempt[]
 }
 
 model Question {

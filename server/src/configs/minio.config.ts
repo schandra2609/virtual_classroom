@@ -18,7 +18,7 @@ import { ENV_CONFIG } from "./env.config.ts";
 export const minioClient: Minio.Client = new Minio.Client({
     endPoint: ENV_CONFIG.MINIO.ENDPOINT,
     port: ENV_CONFIG.MINIO.PORT,
-    useSSL: ENV_CONFIG.MINIO.USE_SSL,
+    useSSL: true,
     accessKey: ENV_CONFIG.MINIO.ACCESS_KEY,
     secretKey: ENV_CONFIG.MINIO.SECRET_KEY,
 });

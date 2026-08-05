@@ -114,7 +114,7 @@ export const mockClassroom: Classroom = {
     subject: "PERN Stack & System Architecture",
     batch: "Spring 2026",
     creatorId: mockUsers.tutor1.id,
-    joinCode: "DEV89X",
+    joiningCode: "DEV89X",
     createdAt: subDays(now, 40),
     updatedAt: subDays(now, 40),
 };

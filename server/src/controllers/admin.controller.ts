@@ -31,7 +31,6 @@ export const getTutorApplications = async (
             throw new BadRequestError("Invalid status. Must be PENDING, VERIFIED or REJECTED.");
         }
 
-        // Query the ledger and JOIN the user profile data
         const applications = await prisma.tutorApplication.findMany({
             where: { status: normalizedStatus as any },
             include: {
@@ -40,12 +39,9 @@ export const getTutorApplications = async (
             orderBy: { createdAt: 'desc' }
         });
 
-        // 🚨 NEW: Asynchronously map the results to generate secure MinIO URLs
         const formattedData = await Promise.all(
             applications.map(async (app) => {
                 let securePdfUrl = app.documentUrl;
-                
-                // If the URL exists and is a relative path in MinIO, convert it to a presigned URL
                 if (securePdfUrl && !securePdfUrl.startsWith("http")) {
                     securePdfUrl = await getPresignedUrl(securePdfUrl);
                 }

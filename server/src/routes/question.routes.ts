@@ -19,34 +19,45 @@ const router: Router = Router({ mergeParams: true });
 
 /**
  * @section Question Collection Management
- * Mounted at: /
+ * @url /api/v1/classrooms/:classroomId/papers/:paperId/questions
+ * @access Restricted: Classroom Tutor (verified in parent router)
  */
 router
     .route("/")
     /**
-     * @route POST /
+     * @route POST /api/v1/classrooms/:classroomId/papers/:paperId/questions
      * @description Add a new question (MCQ/MSQ/NAT) to the paper.
-     * @access Restricted: Classroom Tutor (verified in parent router)
      */
     .post(questionController.addQuestion as any);
 
 /**
+ * @section AI Integration
+ * @url /api/v1/classrooms/:classroomId/papers/:paperId/questions/generate
+ * @access Restricted: Classroom Tutor
+ */
+router
+    .route("/generate")
+    /**
+     * @route POST /api/v1/classrooms/:classroomId/papers/:paperId/questions/generate
+     * @description Automatically generates questions via Gemini based on MinIO materials.
+     */
+    .post(questionController.generateAIQuestions as any);
+
+/**
  * @section Individual Question Management
- * Mounted at: /:questionId
+ * @url /api/v1/classrooms/:classroomId/papers/:paperId/questions/:questionId
+ * @access Restricted: Classroom Tutor
  */
 router
     .route("/:questionId")
     /**
-     * @route PATCH /:questionId
+     * @route PATCH /api/v1/classrooms/:classroomId/papers/:paperId/questions/:questionId
      * @description Update question text or marks.
-     * @access Restricted: Classroom Tutor
      */
     .patch(questionController.updateQuestion as any)
-
     /**
-     * @route DELETE /:questionId
+     * @route DELETE /api/v1/classrooms/:classroomId/papers/:paperId/questions/:questionId
      * @description Remove the question from the paper.
-     * @access Restricted: Classroom Tutor
      */
     .delete(questionController.deleteQuestion as any);
 

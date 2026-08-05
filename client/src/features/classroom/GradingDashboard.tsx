@@ -176,11 +176,11 @@ const GradingDashboard = () => {
                     <Table>
                         <TableHeader className="bg-slate-50/50">
                             <TableRow>
-                                <TableHead className="w-[250px]">Student</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Document</TableHead>
-                                <TableHead className="w-[150px]">Score</TableHead>
-                                <TableHead className="text-right w-[100px]">Action</TableHead>
+                                <TableHead className="w-[200px] text-center font-bold uppercase tracking-wide">Student</TableHead>
+                                <TableHead className="text-center font-bold uppercase tracking-wide">Status</TableHead>
+                                <TableHead className="text-center font-bold uppercase tracking-wide">Document</TableHead>
+                                <TableHead className="w-[150px] text-center font-bold uppercase tracking-wide">Score</TableHead>
+                                <TableHead className="w-[100px] text-center font-bold uppercase tracking-wide">Action</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -246,16 +246,16 @@ const GradingDashboard = () => {
                                                 <span className="text-sm text-slate-500">/ {assignment.maxScore}</span>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="text-right">
+                                        <TableCell className="text-center">
                                             <Button 
                                                 size="sm" 
                                                 variant={!row.isMissing && row.marksObtained !== null && Number(grades[row.submissionId!]) === row.marksObtained ? "secondary" : "default"}
                                                 disabled={row.isMissing || isSaving === row.submissionId || !row.submissionId || grades[row.submissionId] === ""}
                                                 onClick={() => handleSaveGrade(row.submissionId)}
-                                                className="gap-2"
+                                                className="p-2 rounded-md"
                                             >
-                                                <FiSave className="h-4 w-4" />
-                                                {isSaving === row.submissionId ? "..." : "Save"}
+                                                <FiSave className="h-5 w-5" />
+                                                {/* {isSaving === row.submissionId ? "..." : "Save"} */}
                                             </Button>
                                         </TableCell>
                                     </TableRow>

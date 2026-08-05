@@ -56,7 +56,7 @@ export const uploadBuffer = async (
  */
 export const getPresignedUrl = async (
     fileName: string,
-    expiry: number = 3600,
+    expiry: number = 60 * 60 * 24, // 24 hours
 ): Promise<string> =>
     minioClient.presignedGetObject(BucketName, fileName, expiry);
 

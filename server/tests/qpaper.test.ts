@@ -19,9 +19,12 @@ describe("Question Paper Module", () => {
       password: "Password@123",
       accountType: "TUTOR",
     });
-    await prisma.user.update({
-      where: { email: "examtutor@test.com" },
-      data: { tutorVerificationStatus: "VERIFIED" },
+    // Manually verify tutor via the TutorApplication ledger (schema refactored from User model)
+    const tutorUser = await prisma.user.findUnique({ where: { email: "examtutor@test.com" }, select: { id: true } });
+    await prisma.tutorApplication.upsert({
+      where: { id: `seed-${tutorUser!.id}` },
+      update: { status: "VERIFIED" },
+      create: { id: `seed-${tutorUser!.id}`, userId: tutorUser!.id, status: "VERIFIED", documentUrl: "test" }
     });
     const login = await request(app).post("/api/v1/auth/login").send({
       email: "examtutor@test.com",

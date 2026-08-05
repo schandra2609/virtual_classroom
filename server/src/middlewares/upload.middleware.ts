@@ -57,14 +57,14 @@ const fileFilter = (
  *
  * Configuration:
  * - Storage: Memory
- * - Limits: 5MB file size limit to prevent Denial of Service (DoS) via large payloads.
+ * - Limits: 20MB file size limit to accommodate large documents and assignment files.
  * - Filter: Enforces specific mimetypes.
  */
 export const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {
-        fileSize: 1024 * 1024 * 5, // 5 MB
-        files: 1, // Only 1 file per field by default
+        fileSize: 1024 * 1024 * 20,
+        files: 5,
     },
 });

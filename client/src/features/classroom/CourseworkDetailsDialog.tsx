@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { FiFileText, FiMonitor, FiUploadCloud, FiExternalLink, FiCheckCircle, FiShield, FiFile } from "react-icons/fi";
+import { FiFileText, FiMonitor, FiUploadCloud, FiExternalLink, FiCheckCircle, FiShield, FiFile, FiClock, FiCpu } from "react-icons/fi";
 
 // Redux & Services
 import { useAppSelector } from "@/hooks/redux";
@@ -13,18 +13,21 @@ import type { Assignment, CourseworkDetailsDialogProps } from "@/api/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId }: CourseworkDetailsDialogProps) => {
+const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId, onSuccess }: CourseworkDetailsDialogProps) => {
     const { user } = useAppSelector((state) => state.auth);
     const navigate = useNavigate();
     
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isSubmitted, setIsSubmitted] = useState(false);
 
     if (!work) return null;
 
     const isAssignment = work.type === "ASSIGNMENT";
     const rawAssignment = work.rawPayload as Assignment;
+    
+    // Extract submission and calculate expiry dynamically
+    const mySubmission = rawAssignment.mySubmission || rawAssignment.submissions?.[0];
+    const isExpired = new Date() > work.targetDate;
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -43,12 +46,13 @@ const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId }: Cour
         try {
             setIsSubmitting(true);
             const formData = new FormData();
-            formData.append("document", selectedFile);
+            formData.append("solutions", selectedFile); 
 
             const response = await assignmentService.submitSolution(classroomId, work.id, formData);
             if (response.success) {
                 toast.success("Solution submitted successfully!");
-                setIsSubmitted(true);
+                if (onSuccess) onSuccess(); // Trigger the parent list refresh
+                onOpenChange(false); 
             }
         } catch (error: any) {
             toast.error(error.response?.data?.message || "Failed to submit solution.");
@@ -64,10 +68,7 @@ const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId }: Cour
 
     return (
         <Dialog open={open} onOpenChange={(val) => {
-            if (!val) {
-                setSelectedFile(null); // Reset on close
-                setIsSubmitted(false);
-            }
+            if (!val) setSelectedFile(null); // Reset on close
             onOpenChange(val);
         }}>
             <DialogContent className="sm:max-w-[600px]">
@@ -97,7 +98,7 @@ const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId }: Cour
                             {work.description || "No additional instructions provided."}
                         </p>
                         
-                        {/* Tutor Attachments (Only for Assignments) */}
+                        {/* Tutor Attachments */}
                         {isAssignment && rawAssignment.attachments && rawAssignment.attachments.length > 0 && (
                             <div className="mt-4 pt-4 border-t border-slate-200">
                                 <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Reference Materials</h4>
@@ -126,17 +127,48 @@ const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId }: Cour
                             <h4 className="text-sm font-semibold text-slate-900 mb-3">Your Work</h4>
                             
                             {isAssignment ? (
-                                // PDF Upload Area
-                                isSubmitted ? (
-                                    <div className="flex items-center gap-3 p-4 bg-green-50 text-green-700 border border-green-200 rounded-lg">
-                                        <FiCheckCircle className="h-6 w-6" />
-                                        <div>
-                                            <p className="font-semibold text-sm">Successfully Submitted</p>
-                                            <p className="text-xs mt-0.5">Your work has been securely uploaded to the ledger.</p>
+                                mySubmission?.marksObtained !== null && mySubmission?.marksObtained !== undefined ? (
+                                    // STATE 1: Graded & Locked
+                                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="font-semibold text-blue-900 flex items-center gap-2">
+                                                <FiCheckCircle className="h-5 w-5" /> Graded
+                                            </span>
+                                            <span className="text-lg font-bold text-blue-700">
+                                                {mySubmission?.marksObtained} / {rawAssignment.maxScore}
+                                            </span>
                                         </div>
+                                        <p className="text-xs text-blue-700 mt-1">This assignment has been graded. Submissions are locked.</p>
+                                        {mySubmission?.attachments?.[0] && (
+                                            <a href={mySubmission.attachments[0].url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline">
+                                                <FiFile className="h-4 w-4" /> View Submitted Document
+                                            </a>
+                                        )}
+                                    </div>
+                                ) : isExpired ? (
+                                    // STATE 2: Expired & Locked
+                                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                                        <div className="flex items-center gap-2 text-red-900 font-semibold mb-1">
+                                            <FiClock className="h-5 w-5" /> Deadline Passed
+                                        </div>
+                                        <p className="text-sm text-red-700">
+                                            This assignment is past due and is no longer accepting submissions. Contact your tutor if you require an extension.
+                                        </p>
+                                        {mySubmission?.attachments?.[0] && (
+                                            <a href={mySubmission.attachments[0].url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-red-600 hover:underline">
+                                                <FiFile className="h-4 w-4" /> View Your Submission
+                                            </a>
+                                        )}
                                     </div>
                                 ) : (
+                                    // STATE 3: Active (Upload or Replace)
                                     <div className="space-y-4">
+                                        {mySubmission && (
+                                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">
+                                                <span className="font-semibold">Note:</span> You have already submitted a solution. Uploading a new PDF will overwrite your previous file.
+                                            </div>
+                                        )}
+
                                         <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 flex flex-col items-center justify-center text-center bg-slate-50 relative hover:bg-slate-100 transition-colors">
                                             <input 
                                                 type="file" 
@@ -151,6 +183,12 @@ const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId }: Cour
                                                     <p className="text-sm font-medium text-slate-900">{selectedFile.name}</p>
                                                     <p className="text-xs text-slate-500 mt-1">Click to replace file</p>
                                                 </>
+                                            ) : mySubmission?.attachments?.[0] ? (
+                                                <>
+                                                    <FiFileText className="h-10 w-10 text-green-500 mb-2" />
+                                                    <p className="text-sm font-medium text-slate-900">Current: {mySubmission.attachments[0].fileName}</p>
+                                                    <p className="text-xs text-slate-500 mt-1">Click to replace your submission</p>
+                                                </>
                                             ) : (
                                                 <>
                                                     <FiUploadCloud className="h-10 w-10 text-slate-400 mb-2" />
@@ -164,7 +202,7 @@ const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId }: Cour
                                             disabled={!selectedFile || isSubmitting}
                                             onClick={handleSubmitSolution}
                                         >
-                                            {isSubmitting ? "Uploading to secure ledger..." : "Turn In Assignment"}
+                                            {isSubmitting ? "Uploading..." : mySubmission ? "Replace Submission" : "Turn In Assignment"}
                                         </Button>
                                     </div>
                                 )
@@ -176,47 +214,59 @@ const CourseworkDetailsDialog = ({ open, onOpenChange, work, classroomId }: Cour
                                         <div>
                                             <p className="text-sm font-semibold text-amber-900">Strict Anti-Cheat Enforced</p>
                                             <p className="text-xs text-amber-700 mt-1">
-                                                This exam requires Fullscreen mode. Navigating to other tabs, minimizing the browser, or exiting fullscreen will instantly lock your exam and notify the tutor.
+                                                This exam requires Fullscreen mode. Leaving the browser will instantly lock your exam.
                                             </p>
                                         </div>
                                     </div>
-                                    <Button 
-                                        className="w-full bg-indigo-600 hover:bg-indigo-700 gap-2" 
-                                        size="lg"
-                                        onClick={handleLaunchSecureBrowser}
-                                    >
-                                        <FiMonitor className="h-4 w-4" />
-                                        Start Secure Exam
+                                    <Button className="w-full bg-indigo-600 hover:bg-indigo-700 gap-2" size="lg" onClick={handleLaunchSecureBrowser}>
+                                        <FiMonitor className="h-4 w-4" /> Start Secure Exam
                                     </Button>
                                 </div>
                             )}
                         </div>
                     )}
 
-                    {/* Tutor Action Area (Grading Access) */}
+                    {/* Tutor Action Area */}
                     {user?.accountType === "TUTOR" && (
                         <div className="pt-2 border-t border-slate-200 mt-4">
-                            <div className="flex items-center justify-between p-4 bg-indigo-50 border border-indigo-100 rounded-lg">
+                            <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-indigo-50 border border-indigo-100 rounded-lg gap-4">
                                 <div>
-                                    <h4 className="text-sm font-semibold text-indigo-900">Grading & Submissions</h4>
+                                    <h4 className="text-sm font-semibold text-indigo-900">
+                                        {isAssignment ? "Grading & Submissions" : "Exam Management"}
+                                    </h4>
                                     <p className="text-xs text-indigo-700 mt-1">
                                         {isAssignment 
-                                            ? "Review student PDFs and assign grades." 
-                                            : "View auto-graded results and CBT analytics."}
+                                            ? `Review student PDFs and assign grades. (${rawAssignment._count?.submissions || 0} Submitted)` 
+                                            : "Generate AI questions or view CBT analytics."}
                                     </p>
                                 </div>
-                                <Button 
-                                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                                    onClick={() => {
-                                        if (isAssignment) {
-                                            navigate(`/dashboard/grade/${classroomId}/${work.id}`);
-                                        } else {
-                                            toast.info("CBT Analytics Dashboard coming soon!");
-                                        }
-                                    }}
-                                >
-                                    Open Dashboard
-                                </Button>
+                                <div className="flex gap-2 w-full sm:w-auto">
+                                    {!isAssignment && (
+                                        <Button 
+                                            variant="outline" 
+                                            className="border-indigo-600 text-indigo-600 hover:bg-indigo-100 w-full sm:w-auto"
+                                            onClick={() => {
+                                                onOpenChange(false);
+                                                navigate(`/dashboard/cbt/${classroomId}/${work.id}/generate`);
+                                            }}
+                                        >
+                                            <FiCpu className="mr-2 h-4 w-4" /> AI Generator
+                                        </Button>
+                                    )}
+                                    <Button 
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white w-full sm:w-auto"
+                                        onClick={() => {
+                                            if (isAssignment) {
+                                                onOpenChange(false);
+                                                navigate(`/dashboard/grade/${classroomId}/${work.id}`);
+                                            } else {
+                                                toast.info("CBT Analytics Dashboard coming soon!");
+                                            }
+                                        }}
+                                    >
+                                        Open Dashboard
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     )}

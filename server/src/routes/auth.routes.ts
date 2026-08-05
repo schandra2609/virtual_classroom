@@ -18,34 +18,57 @@ import passport from "passport";
 const router: Router = Router();
 
 /**
- * @route POST /api/v1/auth/register
- * @description Handles new user registration.
+ * @url /api/v1/auth/register
  */
-router.route("/register").post(authController.register);
+router
+    .route("/register")
+    /**
+     * @route POST /api/v1/auth/register
+     * @description Handles new user registration.
+     */
+    .post(authController.register);
 
 /**
- * @route POST /api/v1/auth/login
- * @description Handles credential-based login.
+ * @url /api/v1/auth/login
  */
-router.route("/login").post(authController.login);
+router
+    .route("/login")
+    /**
+     * @route POST /api/v1/auth/login
+     * @description Handles credential-based login.
+     */
+    .post(authController.login);
 
 /**
- * @route POST /api/v1/auth/logout
- * @description Handles session termination.
+ * @url /api/v1/auth/logout
  */
-router.route("/logout").post(verifyToken as any, authController.logout as any);
+router
+    .route("/logout")
+    /**
+     * @route POST /api/v1/auth/logout
+     * @description Handles session termination.
+     */
+    .post(verifyToken as any, authController.logout as any);
 
 /**
- * @route POST /api/v1/auth/refresh-token
- * @description Handles regeneration of new access tokens and rotation of existing refresh token.
+ * @url /api/v1/auth/refresh-token
  */
-router.route("/refresh-token").post(authController.refreshAccessTokens);
+router
+    .route("/refresh-token")
+    /**
+     * @route POST /api/v1/auth/refresh-token
+     * @description Handles regeneration of new access tokens and rotation of existing refresh token.
+     */
+    .post(authController.refreshAccessTokens);
 
 /**
- * @route GET /api/v1/auth/google
- * @descripton Initiates the Google OAuth 2.0 flow.
+ * @url /api/v1/auth/google
  */
 router.route("/google").get(
+    /**
+     * @route GET /api/v1/auth/google
+     * @description Initiates the Google OAuth 2.0 flow.
+     */
     passport.authenticate("google", {
         scope: ["profile", "email"],
         session: false,
@@ -53,10 +76,13 @@ router.route("/google").get(
 );
 
 /**
- * @route GET /api/v1/auth/google/callback
- * @description Google-invoked callback. Dispatches to controller for token generation.
+ * @url /api/v1/auth/google/callback
  */
 router.route("/google/callback").get(
+    /**
+     * @route GET /api/v1/auth/google/callback
+     * @description Google-invoked callback. Dispatches to controller for token generation.
+     */
     passport.authenticate("google", {
         session: false,
         failureRedirect: "/login",
@@ -65,9 +91,14 @@ router.route("/google/callback").get(
 );
 
 /**
- * @route POST /api/v1/auth/complete-profile
- * @description Final step for new OAuth users.
+ * @url /api/v1/auth/complete-profile
  */
-router.route("/complete-profile").post(authController.completeUserProfile);
+router
+    .route("/complete-profile")
+    /**
+     * @route POST /api/v1/auth/complete-profile
+     * @description Final step for new OAuth users.
+     */
+    .post(authController.completeUserProfile);
 
 export default router;

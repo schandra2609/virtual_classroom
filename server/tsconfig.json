@@ -39,6 +39,6 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
   },
-  "include": ["src/**/*", "server.ts", "tests/**/*"],
+  "include": ["src/**/*", "server.ts", "tests/**/*", "src/services/.genai.service.ts.backup"],
   "exclude": ["node_modules", "dist"]
 }

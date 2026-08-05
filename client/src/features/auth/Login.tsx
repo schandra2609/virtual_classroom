@@ -142,8 +142,8 @@ const Login = () => {
                                 variant="outline" 
                                 className="w-full gap-2"
                                 onClick={() => {
-                                    // Redirect directly to your backend OAuth initiation route
-                                    const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+                                    // Point directly to the backend absolute URL to avoid Vite proxy drops
+                                    const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
                                     window.location.href = `${BASE_URL}/auth/google`;
                                 }}
                             >

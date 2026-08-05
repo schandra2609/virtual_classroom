@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { FiPlus, FiUsers, FiBookOpen, FiCopy, FiCheckCircle } from "react-icons/fi";
+import { FiPlus, FiUsers, FiBookOpen, FiCopy, FiCheckCircle, FiInbox } from "react-icons/fi";
 import { FaGraduationCap } from "react-icons/fa";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
@@ -41,17 +41,13 @@ const createSchema = z.object({
 });
 
 const joinSchema = z.object({
-    joiningCode: z.string().length(6, "Joining code must be exactly 6 characters"),
+    joiningCode: z.string().length(8, "Joining code must be exactly 8 characters"),
 });
 
 const ClassroomsDashboard = () => {
     const { user } = useAppSelector((state) => state.auth);
 
-    // 🚨 Instantly redirect Admins before any other hooks or rendering occurs
-    if (user?.accountType === "ADMINISTRATOR") {
-        return <Navigate to="/dashboard/applications" replace />;
-    }
-    
+    // All hooks must be declared unconditionally — React Rules of Hooks
     const [classrooms, setClassrooms] = useState<Classroom[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -68,8 +64,10 @@ const ClassroomsDashboard = () => {
         defaultValues: { joiningCode: "" },
     });
 
-    // Fetch Classrooms on Mount
     useEffect(() => {
+        // Don't fetch classrooms if this is an admin (they get redirected)
+        if (user?.accountType === "ADMINISTRATOR") return;
+
         const fetchClassrooms = async () => {
             try {
                 const response = await classroomService.getMyClassrooms();
@@ -83,7 +81,7 @@ const ClassroomsDashboard = () => {
             }
         };
         fetchClassrooms();
-    }, []);
+    }, [user?.accountType]);
 
     // Handlers
     const onCreateClassroom = async (values: z.infer<typeof createSchema>) => {
@@ -122,8 +120,10 @@ const ClassroomsDashboard = () => {
 
     return (
         <div className="space-y-6">
-            
-            {/* Header Area */}
+            {/* Admin redirect — placed in JSX to keep hooks unconditional */}
+            {user?.accountType === "ADMINISTRATOR" && (
+                <Navigate to="/dashboard/applications" replace />
+            )}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-slate-900">
@@ -134,65 +134,115 @@ const ClassroomsDashboard = () => {
                     </p>
                 </div>
 
-                {/* Role-Based Action Button */}
-                {user?.accountType === "TUTOR" && user?.tutorVerificationStatus !== "VERIFIED" ? (
-                    <Button disabled variant="secondary" className="gap-2" title="Your account must be verified by an admin to create classrooms">
-                        <FiPlus className="h-4 w-4" /> Create Classroom
-                    </Button>
-                ) : (
-                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button className="gap-2">
-                                <FiPlus className="h-4 w-4" />
-                                {user?.accountType === "TUTOR" ? "Create Classroom" : "Join Classroom"}
+                {/* Role-Based Action Buttons */}
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                    {user?.accountType === "TUTOR" ? (
+                        <>
+                            <Button variant="outline" className="gap-2" asChild>
+                                <Link to="/dashboard/invitations">
+                                    <FiInbox className="h-4 w-4" /> Invitations
+                                </Link>
                             </Button>
-                        </DialogTrigger>
-                        
-                        <DialogContent className="sm:max-w-[425px]">
-                            <DialogHeader>
-                                <DialogTitle>
-                                    {user?.accountType === "TUTOR" ? "Create a new classroom" : "Join a classroom"}
-                                </DialogTitle>
-                                <DialogDescription>
-                                    {user?.accountType === "TUTOR" 
-                                        ? "Set up a new environment for your students." 
-                                        : "Enter the 6-character code provided by your tutor."}
-                                </DialogDescription>
-                            </DialogHeader>
 
-                            {/* Conditional Form Render */}
-                            {user?.accountType === "TUTOR" ? (
-                                <Form {...createForm}>
-                                    <form onSubmit={createForm.handleSubmit(onCreateClassroom)} className="space-y-4 pt-4">
-                                        <FormField control={createForm.control} name="name" render={({ field }) => (
-                                            <FormItem><FormLabel>Classroom Name</FormLabel><FormControl><Input placeholder="e.g. Intro to React" {...field} /></FormControl><FormMessage /></FormItem>
-                                        )} />
-                                        <FormField control={createForm.control} name="subject" render={({ field }) => (
-                                            <FormItem><FormLabel>Subject</FormLabel><FormControl><Input placeholder="e.g. Web Development" {...field} /></FormControl><FormMessage /></FormItem>
-                                        )} />
-                                        <FormField control={createForm.control} name="batch" render={({ field }) => (
-                                            <FormItem><FormLabel>Batch/Section</FormLabel><FormControl><Input placeholder="e.g. Fall 2026" {...field} /></FormControl><FormMessage /></FormItem>
-                                        )} />
-                                        <Button type="submit" className="w-full mt-4" disabled={createForm.formState.isSubmitting}>
-                                            {createForm.formState.isSubmitting ? "Creating..." : "Create"}
-                                        </Button>
-                                    </form>
-                                </Form>
-                            ) : (
-                                <Form {...joinForm}>
-                                    <form onSubmit={joinForm.handleSubmit(onJoinClassroom)} className="space-y-4 pt-4">
-                                        <FormField control={joinForm.control} name="joiningCode" render={({ field }) => (
-                                            <FormItem><FormLabel>Joining Code</FormLabel><FormControl><Input placeholder="e.g. X7B9KQ" className="uppercase" maxLength={6} {...field} /></FormControl><FormMessage /></FormItem>
-                                        )} />
-                                        <Button type="submit" className="w-full mt-4" disabled={joinForm.formState.isSubmitting}>
-                                            {joinForm.formState.isSubmitting ? "Requesting..." : "Request to Join"}
-                                        </Button>
-                                    </form>
-                                </Form>
+                            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                                <DialogTrigger asChild>
+                                    <Button className="gap-2">
+                                        <FiPlus className="h-4 w-4" /> Create Classroom
+                                    </Button>
+                                </DialogTrigger>
+
+                                <DialogContent className="sm:max-w-[425px]">
+                                    <DialogHeader>
+                                        <DialogTitle>Create New Classroom</DialogTitle>
+                                        <DialogDescription>
+                                            Set up a new environment for your students.
+                                        </DialogDescription>
+                                    </DialogHeader>
+
+                                    <Form {...createForm}>
+                                        <form onSubmit={createForm.handleSubmit(onCreateClassroom)} className="space-y-4 pt-4">
+                                            <FormField control={createForm.control} name="name" render={({ field }) => (
+                                                <FormItem><FormLabel>Classroom Name</FormLabel><FormControl><Input placeholder="e.g. Intro to React" {...field} /></FormControl><FormMessage /></FormItem>
+                                            )} />
+                                            <FormField control={createForm.control} name="subject" render={({ field }) => (
+                                                <FormItem><FormLabel>Subject</FormLabel><FormControl><Input placeholder="e.g. Web Development" {...field} /></FormControl><FormMessage /></FormItem>
+                                            )} />
+                                            <FormField control={createForm.control} name="batch" render={({ field }) => (
+                                                <FormItem><FormLabel>Batch/Section</FormLabel><FormControl><Input placeholder="e.g. Fall 2026" {...field} /></FormControl><FormMessage /></FormItem>
+                                            )} />
+                                            <Button type="submit" className="w-full mt-4" disabled={createForm.formState.isSubmitting}>
+                                                {createForm.formState.isSubmitting ? "Creating..." : "Create"}
+                                            </Button>
+                                        </form>
+                                    </Form>
+                                </DialogContent>
+                            </Dialog>
+                        </>
+                    ) : (
+                        <>
+                            {(
+                                <Button variant="outline" className="gap-2" asChild>
+                                    <Link to="/dashboard/invitations">
+                                        <FiInbox className="h-4 w-4" /> Invitations
+                                    </Link>
+                                </Button>
                             )}
-                        </DialogContent>
-                    </Dialog>
-                )}
+
+                            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                                <DialogTrigger asChild>
+                                    <Button className="gap-2">
+                                        <FiPlus className="h-4 w-4" />
+                                        {user?.accountType !== "STUDENT" ? "Create Classroom" : "Join Classroom"}
+                                    </Button>
+                                </DialogTrigger>
+                                
+                                <DialogContent className="sm:max-w-[425px]">
+                                    <DialogHeader>
+                                        <DialogTitle>
+                                            {user?.accountType !== "STUDENT" ? "Create New Classroom" : "Join Classroom"}
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            {user?.accountType !== "STUDENT" 
+                                                ? "Set up a new environment for your students." 
+                                                : "Enter the 8-character joining code."}
+                                        </DialogDescription>
+                                    </DialogHeader>
+
+                                    {/* Conditional Form Render */}
+                                    {user?.accountType !== "STUDENT" ? (
+                                        <Form {...createForm}>
+                                            <form onSubmit={createForm.handleSubmit(onCreateClassroom)} className="space-y-4 pt-4">
+                                                <FormField control={createForm.control} name="name" render={({ field }) => (
+                                                    <FormItem><FormLabel>Classroom Name</FormLabel><FormControl><Input placeholder="e.g. Intro to React" {...field} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={createForm.control} name="subject" render={({ field }) => (
+                                                    <FormItem><FormLabel>Subject</FormLabel><FormControl><Input placeholder="e.g. Web Development" {...field} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={createForm.control} name="batch" render={({ field }) => (
+                                                    <FormItem><FormLabel>Batch/Section</FormLabel><FormControl><Input placeholder="e.g. Fall 2026" {...field} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <Button type="submit" className="w-full mt-4" disabled={createForm.formState.isSubmitting}>
+                                                    {createForm.formState.isSubmitting ? "Creating..." : "Create"}
+                                                </Button>
+                                            </form>
+                                        </Form>
+                                    ) : (
+                                        <Form {...joinForm}>
+                                            <form onSubmit={joinForm.handleSubmit(onJoinClassroom)} className="space-y-4 pt-4">
+                                                <FormField control={joinForm.control} name="joiningCode" render={({ field }) => (
+                                                    <FormItem><FormLabel>Joining Code</FormLabel><FormControl><Input placeholder="e.g. X7b9kQ72" className="font-mono tracking-[10px] flex items-center justify-center border border-indigo-900" maxLength={8} {...field} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <Button type="submit" className="w-full mt-4" disabled={joinForm.formState.isSubmitting}>
+                                                    {joinForm.formState.isSubmitting ? "Requesting..." : "Request to Join"}
+                                                </Button>
+                                            </form>
+                                        </Form>
+                                    )}
+                                </DialogContent>
+                            </Dialog>
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Classrooms Grid */}
@@ -230,10 +280,9 @@ const ClassroomsDashboard = () => {
                                         <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <button 
-                                                    onClick={() => copyToClipboard(cls.joinCode, cls.id)}
+                                                    onClick={() => copyToClipboard(cls.joiningCode, cls.id)}
                                                     className="absolute top-3 right-3 flex items-center gap-1.5 bg-white/80 backdrop-blur-sm hover:bg-white text-xs font-semibold px-2.5 py-1 rounded-md shadow-sm border border-slate-200/60 transition-all text-slate-700 hover:text-primary"
                                                 >
-                                                    <span className="tracking-widest uppercase">{cls.joinCode}</span>
                                                     {copiedId === cls.id ? <FiCheckCircle className="h-3.5 w-3.5 text-green-600" /> : <FiCopy className="h-3.5 w-3.5" />}
                                                 </button>
                                             </TooltipTrigger>

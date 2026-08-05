@@ -62,7 +62,7 @@ export const getMyInvitations = async (
  * @function acceptCoTutorInvitation
  * @description Processes the acceptance of an invitation.
  * Logic:
- * 1. Validates that the user is a 'VERIFIED' tutor by querying the TutorApplication ledger.
+ * 1. Validates that the user is a 'VERIFIED' tutor by querying the TutorApplication ledger (single source of truth).
  * 2. Checks invitation existence, status, and expiry.
  * 3. Verifies that the inviteeEmail matches the authenticated user's email.
  * 4. Executes a **Database Transaction** to:
@@ -72,7 +72,8 @@ export const getMyInvitations = async (
  * @param {Response} res - Success response confirming membership.
  * @param {NextFunction} next - Error propagation.
  * @throws {ForbiddenError} 403 - If the user is not verified or the email does not match.
- * @throws {NotFoundError} 404 - If the invitation is missing or expired.
+ * @throws {NotFoundError} 404 - If the invitation is missing or already processed.
+ * @throws {BadRequestError} 400 - If the invitation has expired.
  * @throws {ConflictError} 409 - If the user is already a member of the classroom.
  * @returns {Promise<void>}
  */
@@ -89,33 +90,54 @@ export const acceptCoTutorInvitation = async (
             throw new BadRequestError("Invitation ID is required.");
         }
 
-        // 🚨 SECURITY CHECK: Query the ledger to ensure they are a globally verified tutor
+        // 🚨 STRICT SECURITY CHECK: Database-level verification
+        // Check 1: Ensure the user's account type is actually TUTOR
+        const dbUser = await prisma.user.findUnique({
+            where: { id: user?.id as string },
+            select: { accountType: true } // Removed the invalid tutorVerificationStatus field
+        });
+
+        // Check 2: Query the TutorApplication ledger as the single source of truth for verification
         const latestApplication = await prisma.tutorApplication.findFirst({
             where: { userId: user?.id as string },
             orderBy: { createdAt: "desc" }
         });
 
-        if (!latestApplication || latestApplication.status !== "VERIFIED") {
-            throw new ForbiddenError("Not a verified tutor account");
+        // The user is only verified if their account type is TUTOR AND their latest application is VERIFIED
+        const isVerifiedTutor = dbUser?.accountType === "TUTOR" && latestApplication?.status === "VERIFIED";
+
+        if (!isVerifiedTutor) {
+            throw new ForbiddenError("Access denied: You must be a fully verified tutor to accept invitations.");
         }
 
+        // Fetch the pending invitation
         const invitation = await prisma.classroomInvitation.findUnique({
             where: { id: invitationId, status: "PENDING" },
         });
-        if (!invitation || new Date() > invitation.expiresAt)
-            throw new NotFoundError("Invitation not found or has expired");
+
+        if (!invitation) {
+            throw new NotFoundError("Invitation not found or has already been processed.");
+        }
+        
+        // Expiry check
+        if (new Date() > invitation.expiresAt) {
+            // Automatically clean up the expired invitation in the background
+            await prisma.classroomInvitation.update({
+                where: { id: invitationId },
+                data: { status: "EXPIRED" }
+            });
+            throw new BadRequestError("This invitation has expired.");
+        }
         
         // Integrity Check: Is the person logged in the one who was actually invited?
-        if (
-            invitation.inviteeEmail.toLowerCase() !== user?.email?.toLowerCase()
-        )
-            throw new ForbiddenError(
-                "This invitation is intended for another user",
-            );
+        if (invitation.inviteeEmail.toLowerCase() !== user?.email?.toLowerCase()) {
+            throw new ForbiddenError("This invitation is intended for a different user address.");
+        }
 
         /**
          * @section Atomic Transaction
          * Ensures that the membership is granted and the invite is marked as used simultaneously.
+         * If either fails, the database rolls back to prevent ghost records.
          */
         await prisma.$transaction(async (txn) => {
             await txn.classroomMember.create({
@@ -126,29 +148,33 @@ export const acceptCoTutorInvitation = async (
                     membershipStatus: "APPROVED",
                 },
             });
+            
             await txn.classroomInvitation.update({
                 where: { id: invitationId },
                 data: { status: "ACCEPTED" },
             });
         });
+        
         res.status(201).json({
             success: true,
-            message: "Invitation, for the role CO_TUTOR, is accepted",
+            message: "Invitation accepted successfully. You are now a Co-Tutor.",
         });
+        
     } catch (error: any) {
         /**
          * @section Conflict Handling
-         * P2002 handles the case where the user is already a member.
-         * We mark the invitation as accepted to clean up the queue.
+         * P2002 handles the case where the user is somehow already a member.
+         * We mark the invitation as accepted to clean it out of the pending queue.
          */
         if (error.code === "P2002") {
             await prisma.classroomInvitation.update({
                 where: { id: req.params?.invitationId as string },
                 data: { status: "ACCEPTED" },
             });
-            throw new ConflictError(
-                "You are already a member of this classroom.",
-            );
+            
+            // Pass the conflict error to the Express error handler
+            next(new ConflictError("You are already a member of this classroom."));
+            return;
         }
         next(error);
     }

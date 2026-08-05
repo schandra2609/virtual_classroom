@@ -1,10 +1,10 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://192.168.0.130:5000/api/v1';
 
 export const API = axios.create({
     baseURL: BASE_URL,
-    withCredentials: true, // Crucial: Ensures the http-only refresh token cookie is sent!
+    withCredentials: true,
     headers: {
         'Content-Type': 'application/json',
     },

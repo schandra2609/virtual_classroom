@@ -9,10 +9,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { ajConfig } from "../configs/arcjet.config.ts";
 import Logger from "../utils/Logger.ts";
-import {
-    ForbiddenError,
-    TooManyRequestsError,
-} from "../errors/handler.error.ts";
+import { ForbiddenError, TooManyRequestsError } from "../utils/Error.ts";
 
 /**
  * @async
@@ -89,14 +86,15 @@ export const arcjetMiddleware = async (
     } catch (error) {
         /**
          * @section Error Handling
-         * If Arcjet itself fails (network issue), we log the error but allow
-         * the request to proceed (Fail-Open) to ensure high availability,
-         * unless you prefer a Fail-Closed approach.
+         * If Arcjet itself fails (network issue, timeout), we log the error but
+         * allow the request to proceed (Fail-Open) to ensure high availability.
+         * Calling next() without arguments passes control to the next middleware
+         * without triggering the error handler.
          */
-        Logger.error("Arcjet Middleware Error");
+        Logger.error("Arcjet Middleware Error — failing open to preserve availability");
         Logger.debug(error instanceof Error ? error.message : String(error));
 
-        // Passing the error to the global error handler
-        next(error);
+        // Fail-Open: let the request through when Arcjet is unreachable
+        next();
     }
 };

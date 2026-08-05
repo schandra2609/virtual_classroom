@@ -16,10 +16,11 @@ describe("Classroom Announcements & Interactions", () => {
     const tReg = await request(app).post("/api/v1/auth/register").send({
       fullName: "Feed Tutor", email: "ftutor@test.com", password: "TutorPassword@123", accountType: "TUTOR"
     });
-    // Manually verify
-    await prisma.user.update({
-      where: { id: tReg.body.data.id },
-      data: { tutorVerificationStatus: "VERIFIED" }
+    // Manually verify tutor via the TutorApplication ledger (schema refactored from User model)
+    await prisma.tutorApplication.upsert({
+      where: { id: `seed-${tReg.body.data.id}` },
+      update: { status: "VERIFIED" },
+      create: { id: `seed-${tReg.body.data.id}`, userId: tReg.body.data.id, status: "VERIFIED", documentUrl: "test" }
     });
     
     const tLogin = await request(app).post("/api/v1/auth/login").send({ email: "ftutor@test.com", password: "TutorPassword@123" });

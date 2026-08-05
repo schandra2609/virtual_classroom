@@ -37,6 +37,7 @@ const {
     ADMIN_PASSWORD,
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
+    GENAI_API_URL, GENAI_API_KEY,
     MINIO_ENDPOINT,
     MINIO_PORT,
     MINIO_ACCESS_KEY,
@@ -124,4 +125,10 @@ export const ENV_CONFIG = {
         BUCKET: MINIO_BUCKET || "uploads",
         USE_SSL: MINIO_USE_SSL.toLowerCase() === "true" || false,
     },
+
+    /** @section Generative AI */
+    GENAI: {
+        API_KEY: GENAI_API_KEY || "",
+        API_URL: GENAI_API_URL || "",
+    }
 };

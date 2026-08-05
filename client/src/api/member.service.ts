@@ -39,10 +39,7 @@ export const memberService = {
      * @route GET /api/v1/classrooms/:classroomId/members/:studentId/performance
      * @description Fetches the performance data for the Recharts line plot
      */
-    getStudentPerformance: async (classroomId: string, studentId: string): Promise<ApiResponse<{
-        studentName: string;
-        performanceData: Array<{ testName: string; studentScore: number; highestScore: number; }>
-    }>> => {
+    getStudentPerformance: async (classroomId: string, studentId: string): Promise<ApiResponse<any[]>> => {
         const response = await API.get(`/classrooms/${classroomId}/members/${studentId}/performance`);
         return response.data;
     }

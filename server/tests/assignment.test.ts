@@ -16,10 +16,11 @@ describe("Assignment & Student Submission Workflow", () => {
     const tReg = await request(app).post("/api/v1/auth/register").send({
       fullName: "Assignment Tutor", email: "atutor@test.com", password: "TutorPassword@123", accountType: "TUTOR"
     });
-    // Manually verify
-    await prisma.user.update({
-      where: { id: tReg.body.data.id },
-      data: { tutorVerificationStatus: "VERIFIED" }
+    // Manually verify tutor via the TutorApplication ledger (schema refactored from User model)
+    await prisma.tutorApplication.upsert({
+      where: { id: `seed-${tReg.body.data.id}` },
+      update: { status: "VERIFIED" },
+      create: { id: `seed-${tReg.body.data.id}`, userId: tReg.body.data.id, status: "VERIFIED", documentUrl: "test" }
     });
     
     const tLogin = await request(app).post("/api/v1/auth/login").send({ email: "atutor@test.com", password: "TutorPassword@123" });

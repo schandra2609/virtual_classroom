@@ -18,12 +18,6 @@ import Helper from "../utils/Helper.ts";
  * @async
  * @function getAllQuestionPapers
  * @description Retrieves a list of question papers within a classroom.
- * **Security & Temporal Logic:**
- * - **Tutors**: Can see all papers (including future/draft ones).
- * - **Students**: Can only see papers where the 'liveAt' timestamp is in the past.
- * @param {AuthenticatedRequest} req - Request containing 'classroomId' in params.
- * @param {Response} res - Success response with filtered question papers metadata.
- * @returns {Promise<void>}
  */
 export const getAllQuestionPapers = async (
     req: AuthenticatedRequest,
@@ -33,14 +27,12 @@ export const getAllQuestionPapers = async (
     try {
         const { classroomId } = req.params as { classroomId: string };
         const userRole = req.membership?.role as string;
-        if (![classroomId, userRole].every((field) => field.trim())) {
+        if (!classroomId?.trim() || !userRole?.trim()) {
             throw new BadRequestError("Classroom ID, user role are required.");
         }
 
         const whereClause: any = { classroomId: classroomId };
-        /** @section Temporal Visibility Filter */
         if (userRole === "STUDENT") {
-            // Students cannot discover future papers via the API
             whereClause.liveAt = { lte: new Date() };
         }
 
@@ -52,14 +44,15 @@ export const getAllQuestionPapers = async (
                 liveAt: true,
                 duration: true,
                 createdAt: true,
+                creatorId: true,
+                status: true,
             },
             orderBy: { liveAt: "desc" },
         });
         res.status(200).json({
             success: true,
             data: questionPapers,
-            message:
-                "Question papers for the classroom retrieved successfully.",
+            message: "Question papers for the classroom retrieved successfully.",
         });
     } catch (error) {
         next(error);
@@ -70,10 +63,6 @@ export const getAllQuestionPapers = async (
  * @async
  * @function createQuestionPaper
  * @description Initializes a new exam paper. Sets the scheduling and duration.
- * @param {AuthenticatedRequest} req - Body: { title, liveAt, duration }.
- * @throws {BadRequestError} 400 - If liveAt is in the past or duration is invalid.
- * @throws {NotFoundError} 404 - If the parent classroom is invalid (P2003).
- * @returns {Promise<void>}
  */
 export const createQuestionPaper = async (
     req: AuthenticatedRequest,
@@ -83,15 +72,20 @@ export const createQuestionPaper = async (
     try {
         const { classroomId } = req.params as { classroomId: string };
         const creatorId = req.user?.id as string;
+        
         const { title, liveAt, duration } = req.body as {
             title: string;
             liveAt: string;
-            duration: string;
+            duration: number | string;
         };
+
         if (
-            ![creatorId, classroomId, duration, title, liveAt].every((field) =>
-                field.trim(),
-            )
+            !creatorId?.trim() || 
+            !classroomId?.trim() || 
+            !title?.trim() || 
+            !liveAt?.trim() || 
+            duration === undefined || 
+            duration === null
         ) {
             throw new BadRequestError(
                 "Classroom ID, creator ID, title, duration, live at fields are required.",
@@ -107,7 +101,7 @@ export const createQuestionPaper = async (
             data: {
                 title: title,
                 liveAt: liveAtDate.toDate(),
-                duration: parseInt(duration, 10),
+                duration: Number(duration),
                 classroomId: classroomId,
                 creatorId: creatorId,
                 status: "SCHEDULED",
@@ -120,7 +114,7 @@ export const createQuestionPaper = async (
         });
     } catch (error: any) {
         if (error.code === "P2003") {
-            next(new NotFoundError("The specified classroom does not exist."));
+            return next(new NotFoundError("The specified classroom does not exist."));
         }
         next(error);
     }
@@ -130,12 +124,6 @@ export const createQuestionPaper = async (
  * @async
  * @function getQuestionPaperById
  * @description Retrieves a full question paper including questions and options.
- * **CRITICAL SECURITY FEATURE: DATA SANITIZATION**
- * - If the requester is a **STUDENT**, the controller strips 'isCorrect' flags
- *   from options and 'numericalCorrectAnswer' from NAT questions before sending
- *   the response. This prevents cheating via Browser DevTools/Network Tab.
- * @param {AuthenticatedRequest} req - Request containing 'paperId' in params.
- * @returns {Promise<void>}
  */
 export const getQuestionPaperById = async (
     req: AuthenticatedRequest,
@@ -145,7 +133,7 @@ export const getQuestionPaperById = async (
     try {
         const { paperId } = req.params as { paperId: string };
         const userAccountType = req.user?.accountType as string;
-        if (![paperId, userAccountType].every((field) => field.trim())) {
+        if (!paperId?.trim() || !userAccountType?.trim()) {
             throw new BadRequestError("Missing values: paper id, user");
         }
 
@@ -162,12 +150,10 @@ export const getQuestionPaperById = async (
                 ? {
                       ...questionPaper,
                       questions: questionPaper.questions.map((q) => {
-                          // Strip NAT correct answer
                           if (q.numericalCorrectAnswer !== null) {
                               const { numericalCorrectAnswer, ...rest } = q;
                               return rest;
                           }
-                          // Strip MCQ/MSQ correct flags
                           return {
                               ...q,
                               options: q.options.map(
@@ -191,8 +177,7 @@ export const getQuestionPaperById = async (
 /**
  * @async
  * @function updateQuestionPaper
- * @description Updates existing paper metadata. Supports partial updates.
- * @returns {Promise<void>}
+ * @description Updates existing paper metadata. Enforces pre-live edit constraints.
  */
 export const updateQuestionPaper = async (
     req: AuthenticatedRequest,
@@ -201,30 +186,33 @@ export const updateQuestionPaper = async (
 ): Promise<void> => {
     try {
         const { paperId } = req.params as { paperId: string };
-        const { title, liveAt, duration } = req.body as {
-            title: string;
-            liveAt: string;
-            duration: string;
+        const { title, liveAt, duration, negativeMarkingEnabled } = req.body as {
+            title?: string;
+            liveAt?: string;
+            duration?: number | string;
+            negativeMarkingEnabled?: boolean;
         };
         if (!paperId?.trim()) {
             throw new BadRequestError("Paper ID is required.");
         }
 
+        // TIME CHECK: Cannot edit a paper that is already live
+        const existingPaper = await prisma.questionPaper.findUnique({ where: { id: paperId } });
+        if (!existingPaper) throw new NotFoundError("Question paper not found.");
+        if (new Date() >= existingPaper.liveAt) {
+            throw new BadRequestError("Cannot edit an exam that has already started or concluded.");
+        }
+
         const dataToUpdate: any = {};
         if (title) dataToUpdate.title = title;
-        if (duration) dataToUpdate.duration = parseInt(duration, 10);
+        if (duration) dataToUpdate.duration = Number(duration);
+        if (negativeMarkingEnabled !== undefined) dataToUpdate.negativeMarking = Boolean(negativeMarkingEnabled);
         if (liveAt) {
             const liveAtDate = dayjs(liveAt);
-            if (!liveAtDate.isValid()) {
-                throw new BadRequestError(
-                    "The scheduled live time must be a valid date.",
-                );
-            }
+            if (!liveAtDate.isValid()) throw new BadRequestError("Invalid date.");
             dataToUpdate.liveAt = liveAtDate.toDate();
         }
-        if (!dataToUpdate) {
-            throw new BadRequestError("Nothing to update.");
-        }
+        if (Object.keys(dataToUpdate).length === 0) throw new BadRequestError("Nothing to update.");
 
         const updatedPaper = await prisma.questionPaper.update({
             where: { id: paperId },
@@ -244,8 +232,7 @@ export const updateQuestionPaper = async (
 /**
  * @async
  * @function deleteQuestionPaper
- * @description Deletes a paper and all associated questions/options/attempts via cascade.
- * @returns {Promise<void>}
+ * @description Deletes a paper via cascade. Enforces pre-live constraints.
  */
 export const deleteQuestionPaper = async (
     req: AuthenticatedRequest,
@@ -256,6 +243,13 @@ export const deleteQuestionPaper = async (
         const { paperId } = req.params as { paperId: string };
         if (!paperId?.trim()) {
             throw new BadRequestError("Paper ID is required.");
+        }
+
+        // TIME CHECK: Cannot delete a paper that is already live
+        const existingPaper = await prisma.questionPaper.findUnique({ where: { id: paperId } });
+        if (!existingPaper) throw new NotFoundError("Question paper not found.");
+        if (new Date() >= existingPaper.liveAt) {
+            throw new BadRequestError("Cannot delete an exam that has already started or concluded.");
         }
 
         await prisma.questionPaper.delete({ where: { id: paperId } });
@@ -272,8 +266,6 @@ export const deleteQuestionPaper = async (
 /**
  * @async
  * @function changePaperStatus
- * @description Controls the lifecycle of the test (GO LIVE, PAUSE, RESUME, CANCEL).
- * Triggers socket events to update client-side UI immediately.
  */
 export const changePaperStatus = async (
     req: AuthenticatedRequest,
@@ -284,38 +276,45 @@ export const changePaperStatus = async (
         const { paperId } = req.params as { paperId: string };
         const { status } = req.body as { status: string };
 
-        // Validate Status Enum
         const validStatuses = ["LIVE", "PAUSED", "CANCELLED", "COMPLETED"];
         if (!validStatuses.includes(status.toUpperCase())) {
             throw new BadRequestError("Invalid status.");
         }
 
-        // Fetch paper to get classroomId for Socket broadcast
         const paper = await prisma.questionPaper.findUnique({
             where: { id: paperId },
         });
         if (!paper) throw new NotFoundError("Paper not found");
 
         const now = new Date();
+        
+        // TIME CHECK: Cannot cancel an exam if the duration has already expired
+        if (status.toUpperCase() === "CANCELLED") {
+            const deadline = Helper.calculateDeadline(paper);
+            if (now >= deadline) {
+                throw new BadRequestError("Cannot cancel an exam that has already concluded.");
+            }
+
+            await prisma.questionPaper.delete({ where: { id: paperId } });
+            notifyTestStatusChange(paper.classroomId, paperId, "CANCELLED");
+
+            res.status(200).json({
+                success: true,
+                message: "Test cancelled.",
+            });
+            return;
+        }
+
         const dataToUpdate: any = { status: status };
 
-        // --- PAUSE LOGIC ---
         if (status === "PAUSED" && paper.status === "LIVE") {
-            // Start tracking the pause duration
             dataToUpdate.lastPausedAt = now;
         }
 
-        // --- RESUME LOGIC (PAUSED -> LIVE) ---
-        if (
-            status === "LIVE" &&
-            paper.status === "PAUSED" &&
-            paper.lastPausedAt
-        ) {
-            // Calculate how long we were paused (in milliseconds)
-            const pauseDuration =
-                now.getTime() - new Date(paper.lastPausedAt).getTime();
+        if (status === "LIVE" && paper.status === "PAUSED" && paper.lastPausedAt) {
+            const pauseDuration = now.getTime() - new Date(paper.lastPausedAt).getTime();
             dataToUpdate.pauseTime = { increment: pauseDuration };
-            dataToUpdate.lastPausedAt = null; // Reset pause tracker
+            dataToUpdate.lastPausedAt = null;
         }
 
         const updatedPaper = await prisma.questionPaper.update({
@@ -323,12 +322,7 @@ export const changePaperStatus = async (
             data: dataToUpdate,
         });
 
-        // Broadcast to students
-        notifyTestStatusChange(
-            paper.classroomId,
-            paperId,
-            status.toUpperCase(),
-        );
+        notifyTestStatusChange(paper.classroomId, paperId, status.toUpperCase());
 
         res.status(200).json({
             success: true,
@@ -346,8 +340,6 @@ export const changePaperStatus = async (
 /**
  * @async
  * @function getTimerSync
- * @description Called by Student Frontend every ~30 seconds.
- * Returns the "True Server Time" remaining.
  */
 export const getTimerSync = async (
     req: AuthenticatedRequest,
@@ -372,12 +364,9 @@ export const getTimerSync = async (
 
         const deadline = Helper.calculateDeadline(paper);
         const now = new Date();
-
-        /** If currently paused, the remaining time is frozen at the moment of pause */
         let remainingMillis = 0;
 
         if (paper.status === "PAUSED" && paper.lastPausedAt) {
-            /** Deadline is essentially frozen relative to when it was paused */
             const effectiveNow = paper.lastPausedAt;
             remainingMillis = deadline.getTime() - effectiveNow.getTime();
         } else {
@@ -388,11 +377,8 @@ export const getTimerSync = async (
             success: true,
             data: {
                 status: paper.status,
-                remainingSeconds: Math.max(
-                    0,
-                    Math.floor(remainingMillis / 1000),
-                ),
-                serverTime: now /** Send server time to sync clocks */,
+                remainingSeconds: Math.max(0, Math.floor(remainingMillis / 1000)),
+                serverTime: now,
             },
         });
     } catch (error) {

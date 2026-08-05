@@ -18,34 +18,34 @@ const router: Router = Router({ mergeParams: true });
 
 /**
  * @section Base Discussion Routes
- * Mounted at: /
+ * @url /api/v1/classrooms/:classroomId/announcements/:announcementId/comments
  */
 router
     .route("/")
     /**
-     * @route GET /
+     * @route GET /api/v1/classrooms/:classroomId/announcements/:announcementId/comments
      * @description Fetch all comments for the specific announcement.
      */
     .get(commentController.getCommentsForAnnouncement as any)
     /**
-     * @route POST /
+     * @route POST /api/v1/classrooms/:classroomId/announcements/:announcementId/comments
      * @description Post a new comment to the announcement.
      */
     .post(commentController.createComment as any);
 
 /**
  * @section Individual Comment Management
- * Mounted at: /:commentId
+ * @url /api/v1/classrooms/:classroomId/announcements/:announcementId/comments/:commentId
  */
 router
     .route("/:commentId")
     /**
-     * @route PATCH /:commentId
+     * @route PATCH /api/v1/classrooms/:classroomId/announcements/:announcementId/comments/:commentId
      * @description Update text of a specific comment. Access: Author only.
      */
     .patch(commentController.updateComment as any)
     /**
-     * @route DELETE /:commentId
+     * @route DELETE /api/v1/classrooms/:classroomId/announcements/:announcementId/comments/:commentId
      * @description Permanently remove a comment. Access: Author or Classroom Staff.
      */
     .delete(commentController.deleteComment as any);

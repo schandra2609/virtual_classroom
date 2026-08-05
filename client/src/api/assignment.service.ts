@@ -43,7 +43,11 @@ export const assignmentService = {
      * @description Allows a student to upload their solution (FormData for up to 3 files).
      */
     submitSolution: async (classroomId: string, assignmentId: string, formData: FormData): Promise<ApiResponse<Submission>> => {
-        const response = await API.post(`/classrooms/${classroomId}/assignments/${assignmentId}/submit`, formData);
+        const response = await API.post(
+            `/classrooms/${classroomId}/assignments/${assignmentId}/submit`,
+            formData,
+            { headers: { "Content-Type": "multipart/form-data" } }
+        );
         return response.data;
     },
 

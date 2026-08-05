@@ -9,19 +9,23 @@ import { setAuthLoaded } from "@/features/auth/authSlice"
 import { userService } from "@/api/user.service";
 
 // Pages & Layouts
+import DashboardLayout from "@/components/layout/DashboardLayout";
+import ProtectedRoute from "@/components/layout/ProtectedRoute";
+import Landing from "@/features/marketing/Landing";
 import Login from "@/features/auth/Login";
 import Register from "@/features/auth/Register";
 import OAuthCallback from "@/features/auth/OAuthCallback";
 import CompleteProfile from "@/features/auth/CompleteProfile";
 import TutorApplications from "@/features/admin/TutorApplications";
-import Landing from "@/features/marketing/Landing";
-import DashboardLayout from "@/components/layout/DashboardLayout";
-import ProtectedRoute from "@/components/layout/ProtectedRoute";
-import CBTBuilder from "@/features/classroom/CBTBuilder";
+import QuestionGenerator from "@/features/classroom/QuestionGenerator";
 import CBTPlayer from "@/features/classroom/CBTPlayer";
 import ClassroomsDashboard from "@/features/classroom/ClassroomDashboard";
 import ClassroomDetails from "@/features/classroom/ClassroomDetails";
+import ClassroomInfo from "@/features/classroom/ClassroomInfo";
 import GradingDashboard from "@/features/classroom/GradingDashboard";
+import TutorInvitations from "@/features/classroom/TutorInvitations";
+import AttemptList from "@/features/classroom/AttemptList";
+import AttemptReview from "@/features/classroom/AttemptReview";
 import UserProfile from "@/features/profile/UserProfile";
 
 const App = () => {
@@ -30,7 +34,7 @@ const App = () => {
     useEffect(() => {
         const bootstrapAuth = async () => {
             const token = localStorage.getItem('accessToken');
-            
+
             if (token && token !== "undefined" && token !== "null") {
                 try {
                     const response = await userService.getCurrentUser();
@@ -73,15 +77,16 @@ const App = () => {
                         <Route path="/dashboard" element={<DashboardLayout />}>
                             {/* The specific pages inside the dashboard */}
                             <Route index element={<ClassroomsDashboard />} />
+                            <Route path="invitations" element={<TutorInvitations />} />
                             <Route path="classrooms/:id" element={<ClassroomDetails />} />
-                            <Route path="cbt-builder/:classroomId/:paperId" element={<CBTBuilder />} />
+                            <Route path="classrooms/:id/info" element={<ClassroomInfo />} />
+                            <Route path="cbt/:classroomId/:paperId/generate" element={<QuestionGenerator />} />
                             <Route path="cbt-player/:classroomId/:paperId" element={<CBTPlayer />} />
+                            <Route path="classrooms/:classroomId/papers/:paperId/attempts" element={<AttemptList />} />
+                            <Route path="classrooms/:classroomId/papers/:paperId/attempts/:attemptId" element={<AttemptReview />} />
                             <Route path="profile" element={<UserProfile />} />
                             <Route path="applications" element={<TutorApplications />} />
                             <Route path="grade/:classroomId/:assignmentId" element={<GradingDashboard />} />
-
-                            <Route path="calendar" element={<div>Calendar Route (Coming Soon)</div>} />
-                            <Route path="settings" element={<div>Settings Route (Coming Soon)</div>} />
                         </Route>
                     </Route>
 

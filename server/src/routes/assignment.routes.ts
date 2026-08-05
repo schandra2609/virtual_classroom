@@ -8,10 +8,7 @@
  */
 import { Router } from "express";
 import * as assignmentController from "../controllers/assignment.controller.ts";
-import {
-    isClassroomStudent,
-    isClassroomTutor,
-} from "../middlewares/auth.middleware.ts";
+import { isClassroomStudent, isClassroomTutor } from "../middlewares/auth.middleware.ts";
 import { upload } from "../middlewares/upload.middleware.ts";
 
 /**
@@ -23,20 +20,20 @@ const router: Router = Router({ mergeParams: true });
 
 /**
  * @section Base Assignment Routes
- * URL: /api/v1/classrooms/:classroomId/assignments
+ * @url /api/v1/classrooms/:classroomId/assignments
+ * @access Private (Classroom Members)
  */
 router
     .route("/")
     /**
-     * @route GET /
-     * @description Fetches all assignments for the classroom. Accessible by all members.
+     * @route GET /api/v1/classrooms/:classroomId/assignments
+     * @description Fetches all assignments for the classroom.
      */
     .get(assignmentController.getClassroomAssignments as any)
 
     /**
-     * @route POST /
+     * @route POST /api/v1/classrooms/:classroomId/assignments
      * @description Creates a new assignment. Restricted to Tutors.
-     * Integrates Multer to handle up to 3 instructional documents/images.
      */
     .post(
         isClassroomTutor as any,
@@ -46,12 +43,12 @@ router
 
 /**
  * @section Individual Assignment Management
- * URL: /api/v1/classrooms/:classroomId/assignments/:assignmentId
+ * @url /api/v1/classrooms/:classroomId/assignments/:assignmentId
  */
 router
     .route("/:assignmentId")
     /**
-     * @route PATCH /:assignmentId
+     * @route PATCH /api/v1/classrooms/:classroomId/assignments/:assignmentId
      * @description Updates assignment details or deadline. Restricted to Tutors.
      */
     .patch(
@@ -60,8 +57,8 @@ router
     )
 
     /**
-     * @route DELETE - Cancel/Remove Assignment
-     * @description UPDATED: Permanently removes assignment and associated cloud storage files.
+     * @route DELETE /api/v1/classrooms/:classroomId/assignments/:assignmentId
+     * @description Permanently removes assignment and associated cloud storage files.
      */
     .delete(
         isClassroomTutor as any,
@@ -70,14 +67,13 @@ router
 
 /**
  * @section Student Submission Logic
- * URL: /api/v1/classrooms/:classroomId/assignments/:assignmentId/submit
+ * @url /api/v1/classrooms/:classroomId/assignments/:assignmentId/submit
  */
 router
     .route("/:assignmentId/submit")
     /**
-     * @route POST /submit
+     * @route POST /api/v1/classrooms/:classroomId/assignments/:assignmentId/submit
      * @description Allows a student to upload their solution.
-     * Enforces 'STUDENT' role and multipart file limit (Max 3 files).
      */
     .post(
         isClassroomStudent as any,
@@ -87,17 +83,32 @@ router
 
 /**
  * @section Tutor Review Logic
- * URL: /api/v1/classrooms/:classroomId/assignments/:assignmentId/submissions
+ * @url /api/v1/classrooms/:classroomId/assignments/:assignmentId/submissions
  */
 router
     .route("/:assignmentId/submissions")
     /**
-     * @route GET /submissions
+     * @route GET /api/v1/classrooms/:classroomId/assignments/:assignmentId/submissions
      * @description Fetches all student submissions for review. Restricted to Tutors.
      */
     .get(
         isClassroomTutor as any,
         assignmentController.getAssignmentSubmissions as any,
+    );
+
+/**
+ * @section Tutor Grading Logic
+ * @url /api/v1/classrooms/:classroomId/assignments/:assignmentId/submissions/:submissionId/grade
+ */
+router
+    .route("/:assignmentId/submissions/:submissionId/grade")
+    /**
+     * @route PATCH /api/v1/classrooms/:classroomId/assignments/:assignmentId/submissions/:submissionId/grade
+     * @description Allows a tutor to assign or update a grade for a submission.
+     */
+    .patch(
+        isClassroomTutor as any,
+        assignmentController.gradeSubmission as any,
     );
 
 export default router;

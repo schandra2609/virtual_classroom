@@ -8,7 +8,7 @@
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middlewares/auth.middleware.ts";
 import bcrypt from "bcrypt";
-import { BadRequestError, ConflictError } from "../utils/Error.ts";
+import { BadRequestError, ConflictError, ForbiddenError } from "../utils/Error.ts";
 import { prisma } from "../configs/database.config.ts";
 import { dayjs } from "../configs/dayjs.config.ts";
 import { getPresignedUrl, uploadBuffer } from "../services/storage.service.ts";
@@ -55,6 +55,8 @@ export const getCurrentUser = async (req: AuthenticatedRequest, res: Response, n
  * @description Updates non-sensitive user metadata (fullName, profilePhotoUrl, etc.).
  * Validates that at least one updateable field is provided.
  * @param {AuthenticatedRequest} req - Request containing update payload in body.
+ * @param {Response} res - Success response confirming update.
+ * @param {NextFunction} next - Error propagation.
  * @returns {Promise<void>}
  */
 export const updateCurrentUser = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -79,6 +81,33 @@ export const updateCurrentUser = async (req: AuthenticatedRequest, res: Response
 
         res.status(200).json({ success: true, data: { user: updatedUser }, message: "User updated successfully" });
     } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @async
+ * @function deleteCurrentUser
+ * @description Permanently deletes the authenticated user's account and all associated data.
+ * Leverages Prisma's Cascade delete to clean up related ledger entries, memberships, and submissions.
+ * @param {AuthenticatedRequest} req - Request containing the user's ID via the auth token.
+ * @param {Response} res - Success response confirming deletion.
+ * @param {NextFunction} next - Error propagation.
+ * @returns {Promise<void>}
+ */
+export const deleteCurrentUser = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const userId = req.user?.id as string;
+        if (!userId) throw new BadRequestError("Unable to resolve user identity for deletion.");
+
+        await prisma.user.delete({ where: { id: userId } });
+
+        res.status(200).json({
+            success: true,
+            message: "Account deleted successfully.",
+        });
+    } catch (error: any) {
+        if (error.code === "P2025") return next(new BadRequestError("Account no longer exists."));
         next(error);
     }
 };
@@ -191,14 +220,18 @@ export const changePassword = async (req: AuthenticatedRequest, res: Response, n
 
 /**
  * @async
- * @function sendVerificationOtp
- * @description Generates a 6-digit numeric OTP, hashes it for secure storage,
- * and sets a 15-minute expiration window.
+ * @function sendOtp
+ * @description Generates a 6-digit numeric OTP, hashes it, and dispatches it via email.
+ * Accepts a 'purpose' payload to contextualize the request (e.g., EMAIL_VERIFICATION, CHANGE_PASSWORD).
  * @returns {Promise<void>}
  */
-export const sendVerificationOtp = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const sendOtp = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
+        const { purpose } = req.body as { purpose: string };
+        if (!purpose?.trim()) throw new BadRequestError("OTP purpose is required.");
+
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        
         await prisma.user.update({
             where: { id: req.user?.id as string },
             data: {
@@ -208,7 +241,11 @@ export const sendVerificationOtp = async (req: AuthenticatedRequest, res: Respon
         });
 
         await sendOTP({ name: req.user?.fullName as string, email: req.user?.email as string }, otp);
-        res.status(200).json({ success: true, message: `Verification OTP sent to your ${req.user?.email}` });
+        
+        res.status(200).json({ 
+            success: true, 
+            message: `OTP sent successfully for ${purpose.replace("_", " ")}` 
+        });
     } catch (error) {
         next(error);
     }
@@ -216,34 +253,64 @@ export const sendVerificationOtp = async (req: AuthenticatedRequest, res: Respon
 
 /**
  * @async
- * @function verifyEmail
- * @description Validates a submitted OTP. If valid and not expired, sets
- * the user as verified and grants a 12-month verification lifespan.
+ * @function verifyOtp
+ * @description A centralized action dispatcher. Validates the OTP and, if successful,
+ * executes the database updates corresponding to the 'purpose'.
  */
-export const verifyEmail = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const verifyOtp = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-        const { otp } = req.body;
-        if (!otp?.trim()) throw new BadRequestError("OTP is required");
+        const { otp, purpose, payload } = req.body;
+        if (!otp?.trim() || !purpose?.trim()) throw new BadRequestError("OTP and purpose are required.");
 
         const user = await prisma.user.findUnique({ where: { id: req.user?.id as string } });
+        
         if (!user?.verificationOtp || !user?.verificationOtpExpiry || dayjs().isAfter(user.verificationOtpExpiry)) {
-            throw new BadRequestError("OTP has expired. Please request a new one");
+            throw new BadRequestError("OTP has expired. Please request a new one.");
         }
 
         const isOtpCorrect = await bcrypt.compare(otp, user.verificationOtp);
-        if (!isOtpCorrect) throw new BadRequestError("Invalid OTP");
+        if (!isOtpCorrect) throw new BadRequestError("Invalid OTP.");
 
+        const updateData: any = {
+            verificationOtp: null,
+            verificationOtpExpiry: null,
+        };
+
+        let successMessage = "Action completed successfully.";
+
+        switch (purpose) {
+            case "EMAIL_VERIFICATION":
+                updateData.isEmailVerified = true;
+                updateData.emailVerificationExpiry = dayjs().add(12, "month").toDate();
+                successMessage = "Email verified successfully.";
+                break;
+                
+            case "CHANGE_PASSWORD":
+                if (!payload?.newPassword || !payload?.oldPassword) {
+                    throw new BadRequestError("Both old and new passwords are required.");
+                }
+                if (payload.oldPassword === payload.newPassword) {
+                    throw new BadRequestError("New password cannot be the same as the old password.");
+                }
+                const isOldCorrect = await bcrypt.compare(payload.oldPassword, user.password);
+                if (!isOldCorrect) {
+                    throw new ForbiddenError("Old password is incorrect.");
+                }
+                updateData.password = await bcrypt.hash(payload.newPassword, 10);
+                successMessage = "Password changed securely.";
+                break;
+
+            default:
+                throw new BadRequestError("Unrecognized action purpose.");
+        }
+
+        // Execute the atomic update
         await prisma.user.update({
             where: { id: req.user?.id as string },
-            data: {
-                isEmailVerified: true,
-                emailVerificationExpiry: dayjs().add(12, "month").toDate(),
-                verificationOtp: null,
-                verificationOtpExpiry: null,
-            },
+            data: updateData,
         });
 
-        res.status(200).json({ success: true, message: "Email verified successfully" });
+        res.status(200).json({ success: true, message: successMessage });
     } catch (error) {
         next(error);
     }

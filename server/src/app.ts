@@ -55,19 +55,29 @@ app.use(helmet());
 app.use(
     cors({
         origin: (origin, callback) => {
-            if (!origin || ENV_CONFIG.CORS_ORIGIN.includes(origin)) {
-                callback(null, true);
-            } else {
-                console.error(`[CORS] Rejected origin: ${origin}`);
-                console.info(
-                    `[CORS] Allowed origins: ${ENV_CONFIG.CORS_ORIGIN.join(", ")}`,
-                );
-                callback(new Error("Not allowed by CORS"));
-            }
+            callback(null, origin || true);
         },
         credentials: true,
-    }),
+    })
 );
+// app.use(
+//     cors(
+//         {
+//             origin: (origin, callback) => {
+//                 if (!origin || ENV_CONFIG.CORS_ORIGIN.includes(origin)) {
+//                     callback(null, true);
+//                 } else {
+//                     console.error(`[CORS] Rejected origin: ${origin}`);
+//                     console.info(
+//                         `[CORS] Allowed origins: ${ENV_CONFIG.CORS_ORIGIN.join(", ")}`,
+//                     );
+//                     callback(new Error("Not allowed by CORS"));
+//                 }
+//             },
+//             credentials: true,
+//         }
+//     )
+// );
 
 /**
  * @section Request Parsers

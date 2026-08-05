@@ -15,9 +15,10 @@ import {
     NotFoundError,
 } from "../utils/Error.ts";
 import { prisma } from "../configs/database.config.ts";
-import { deleteFile, uploadBuffer } from "../services/storage.service.ts";
+import { deleteFile, getPresignedUrl, uploadBuffer } from "../services/storage.service.ts";
 import { sendMaterialNotification } from "../services/email.service.ts";
 import { ENV_CONFIG } from "../configs/env.config.ts";
+import { minioClient } from "../configs/minio.config.ts";
 
 /**
  * @async
@@ -326,6 +327,8 @@ export const getClassroomAssignments = async (
 ): Promise<void> => {
     try {
         const { classroomId } = req.params as { classroomId: string };
+        const userId = req.user?.id as string;
+
         if (!classroomId?.trim()) {
             throw new BadRequestError("Classroom ID is required.");
         }
@@ -336,6 +339,7 @@ export const getClassroomAssignments = async (
                 attachments: true,
                 author: { select: { fullName: true } },
                 _count: { select: { submissions: true } },
+                submissions: { where: { studentId: userId } }
             },
             orderBy: { createdAt: "desc" },
         });
@@ -378,9 +382,34 @@ export const getAssignmentSubmissions = async (
             orderBy: { submittedAt: "desc" },
         });
 
+        const formattedSubmssions = await Promise.all(
+            submissions.map(async (submission) => {
+                const secureAttachments = await Promise.all(
+                    submission.attachments.map(async (attachment) => {
+                        try {
+                            const cleanObjectPath = attachment.url.replace(/^https?:\/\/[^\/]+\/[^\/]+\//, '');
+                            const presignedUrl = await getPresignedUrl(cleanObjectPath);
+                            return {
+                                ...attachment,
+                                url: presignedUrl, 
+                            };
+                        } catch (err) {
+                            console.error(`Presigned URL generation failed for ${attachment.url}`, err);
+                            return attachment; 
+                        }
+                    })
+                );
+
+                return {
+                    ...submission,
+                    attachments: secureAttachments,
+                };
+            })
+        );
+
         res.status(200).json({
             success: true,
-            data: submissions,
+            data: formattedSubmssions,
             message: "Student submissions retrieved successfully.",
         });
     } catch (error) {

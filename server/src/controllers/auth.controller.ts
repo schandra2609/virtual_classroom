@@ -86,7 +86,7 @@ export const register = async (req: Request, res: Response, next: NextFunction):
 
         res.status(201).json({ success: true, data: newUser, message: "User registered successfully" });
 
-        const dashboardUrl = `${ENV_CONFIG.CORS_ORIGIN[0]}/dashboard/${accountType.toLowerCase()}`;
+        const dashboardUrl = `${ENV_CONFIG.CORS_ORIGIN[0]}/dashboard`;
         await sendWelcomeEmail({ name: fullName, email: email }, dashboardUrl);
     } catch (error) {
         next(error);
@@ -97,6 +97,7 @@ export const register = async (req: Request, res: Response, next: NextFunction):
  * @async
  * @function login
  * @description Authenticates user via email/password.
+ * Enforces strict concurrent login prevention (one device at a time).
  * Sets the Refresh Token in a 'strict' HttpOnly cookie for security.
  * @returns {Promise<void>}
  */
@@ -111,8 +112,44 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
         const isPasswordCorrect = await bcrypt.compare(password, user.password as string);
         if (!isPasswordCorrect) throw new UnauthorizedError("Invalid credentials.");
 
+        // ==========================================
+        // STRICT CONCURRENT LOGIN PREVENTION
+        // ==========================================
+        if (user.refreshToken) {
+            try {
+                // Check if the existing token in the DB is actually still valid/unexpired
+                jwt.verify(user.refreshToken, ENV_CONFIG.REFRESH_TOKEN.SECRET as string);
+                
+                // If jwt.verify succeeds, an ACTIVE session exists on another device.
+                // 1. Revoke the session in the database immediately (Logs out Device A)
+                await prisma.user.update({
+                    where: { id: user.id },
+                    data: { refreshToken: null }
+                });
+
+                // 2. Reject the current login attempt (Blocks Device B)
+                res.status(403).json({
+                    success: false,
+                    message: "Security Alert: An active session was detected on another device. All sessions have been terminated. Please log in again."
+                });
+                return;
+                
+            } catch (error) {
+                // If jwt.verify throws an error, the existing token is expired or invalid.
+                // It is safe to overwrite it and allow the new login.
+            }
+        }
+
+        // ==========================================
+        // PROCEED WITH NORMAL LOGIN
+        // ==========================================
         const { accessToken, refreshToken } = await generateTokens(user);
-        const cookieOptions = { httpOnly: true, secure: (ENV_CONFIG.NODE_ENV === "production") as boolean, sameSite: "lax" as const };
+        const cookieOptions = {
+            httpOnly: true,
+            secure: true,
+            sameSite: "none" as const,
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        };
 
         const { password: _, refreshToken: __, ...userWithoutSecrets } = user as any;
 
@@ -196,7 +233,7 @@ export const handleGoogleCallback = async (req: AuthenticatedRequest, res: Respo
 export const refreshAccessTokens = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
         const incomingRefreshToken: string = req.cookies?.refreshToken;
-        if (!incomingRefreshToken.trim()) throw new UnauthorizedError("No refresh token provided.");
+        if (!incomingRefreshToken?.trim()) throw new UnauthorizedError("No refresh token provided.");
 
         const decoded = jwt.verify(incomingRefreshToken, ENV_CONFIG.REFRESH_TOKEN.SECRET) as JwtPayload;
         const user = await prisma.user.findUnique({ where: { id: decoded.id } });

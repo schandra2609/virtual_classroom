@@ -16,7 +16,11 @@ export const announcementService = {
      * @description Create a new announcement (FormData for up to 5 attachments).
      */
     createAnnouncement: async (classroomId: string, formData: FormData): Promise<ApiResponse<Announcement>> => {
-        const response = await API.post(`/classrooms/${classroomId}/announcements`, formData);
+        const response = await API.post(
+            `/classrooms/${classroomId}/announcements`,
+            formData,
+            { headers: { "Content-Type": "multipart/form-data" } }
+        );
         return response.data;
     },
 

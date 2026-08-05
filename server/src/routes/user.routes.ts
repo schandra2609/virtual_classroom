@@ -17,59 +17,91 @@ import { upload } from "../middlewares/upload.middleware.ts";
 const router: Router = Router();
 
 /**
- * @description Fetch or update basic profile data.
+ * @section Profile Management
+ * @url /api/v1/users/me
  * @access Private
  */
 router
     .route("/")
-    /** @route GET /api/v1/users/me */
+    /**
+     * @route GET /api/v1/users/me
+     * @description Fetch or update basic profile data.
+     */
     .get(userController.getCurrentUser as any)
-    /** @route PATCH /api/v1/users/me */
-    .patch(userController.updateCurrentUser as any);
+    /**
+     * @route PATCH /api/v1/users/me
+     * @description Update profile data.
+     */
+    .patch(userController.updateCurrentUser as any)
+    /**
+     * @route DELETE /api/v1/users/me
+     * @description Delete profile.
+     */
+    .delete(userController.deleteCurrentUser as any);
 
 /**
- * @description Logic for authenticated password rotation.
+ * @section OTP Management
+ * @url /api/v1/users/me/send-otp
+ * @access Private
+ */
+router
+    .route("/send-otp")
+    /**
+     * @route POST /api/v1/users/me/send-otp
+     * @description Universal endpoint to generate and send an OTP.
+     */
+    .post(userController.sendOtp as any);
+
+/**
+ * @section OTP Verification
+ * @url /api/v1/users/me/verify-otp
+ * @access Private
+ */
+router
+    .route("/verify-otp")
+    /**
+     * @route POST /api/v1/users/me/verify-otp
+     * @description Submits the OTP to complete email verification.
+     */
+    .post(userController.verifyOtp as any);
+
+/**
+ * @section Password Management
+ * @url /api/v1/users/me/change-password
  * @access Private
  */
 router
     .route("/change-password")
-    /** @route PATCH /api/v1/users/me/change-password */
+    /**
+     * @route PATCH /api/v1/users/me/change-password
+     * @description Logic for authenticated password rotation.
+     */
     .patch(userController.changePassword as any);
 
 /**
- * @description Triggers the 2FA/Email verification process.
- * @access Private
- */
-router
-    .route("/send-verification-otp")
-    /** @route POST /api/v1/users/me/send-verification-otp */
-    .post(userController.sendVerificationOtp as any);
-
-/**
- * @description Submits the OTP to complete email verification.
- * @access Private
- */
-router
-    .route("/verify-email")
-    /** @route POST /api/v1/users/me/verify-email */
-    .post(userController.verifyEmail as any);
-
-/**
- * @description Multipart endpoint to update user avatar.
+ * @section Avatar Management
+ * @url /api/v1/users/me/profile-photo
  * @access Private (Multipart/Form-Data)
  */
 router
     .route("/profile-photo")
-    /** @route PATCH /api/v1/users/me/profile-photo */
+    /**
+     * @route PATCH /api/v1/users/me/profile-photo
+     * @description Multipart endpoint to update user avatar.
+     */
     .patch(upload.single("image"), userController.uploadProfilePhoto as any);
 
 /**
- * @description Multipart endpoint for tutors to submit verification documents.
+ * @section Qualification Management
+ * @url /api/v1/users/me/submit-qualifications
  * @access Private (TUTOR only)
  */
 router
     .route("/submit-qualifications")
-    /** @route POST /api/v1/users/me/submit-qualifications */
+    /**
+     * @route POST /api/v1/users/me/submit-qualifications
+     * @description Multipart endpoint for tutors to submit verification documents.
+     */
     .post(
         authorize("TUTOR") as any,
         upload.single("document"),
