@@ -17,7 +17,7 @@ import { globalErrorHandler } from "./middlewares/error.middleware.ts";
 import rootRouter from "./routes/root.routes.ts";
 import { ENV_CONFIG } from "./configs/env.config.ts";
 import pinoHttp from "pino-http";
-import { pinoInstance } from "./utils/Logger.ts";
+import Logger, { pinoInstance } from "./utils/Logger.ts";
 import type { IncomingMessage, ServerResponse } from "http";
 
 /**
@@ -55,7 +55,15 @@ app.use(helmet());
 app.use(
     cors({
         origin: (origin, callback) => {
-            callback(null, origin || true);
+            if (!origin || ENV_CONFIG.CORS_ORIGIN.includes(origin)) {
+                callback(null, true);
+            } else {
+                Logger.error(`[CORS] Rejected origin: ${origin}`);
+                Logger.info(
+                    `[CORS] Allowed origins: ${ENV_CONFIG.CORS_ORIGIN.join(", ")}`,
+                );
+                callback(new Error("Not allowed by CORS"));
+            }
         },
         credentials: true,
     })

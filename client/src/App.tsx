@@ -7,6 +7,8 @@ import { useAppDispatch } from "@/hooks/redux";
 import { setAuthLoaded } from "@/features/auth/authSlice"
 
 import { userService } from "@/api/user.service";
+import { authService } from "./api/auth.service";
+import { setInMemoryToken } from "@/api/API";
 
 // Pages & Layouts
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -33,32 +35,33 @@ const App = () => {
 
     useEffect(() => {
         const bootstrapAuth = async () => {
-            const token = localStorage.getItem('accessToken');
-
-            if (token && token !== "undefined" && token !== "null") {
-                try {
+            try {
+                // Attempt silent refresh via HttpOnly Cookie first
+                const refreshResponse = await authService.refreshTokens();
+                const newAccessToken = refreshResponse.data?.accessToken;
+                if (newAccessToken) {
+                    setInMemoryToken(newAccessToken);
+                    
                     const response = await userService.getCurrentUser();
                     const extractedUser = response.data?.user || response.data;
 
-                    if(response.success && extractedUser?.id) {
+                    if (response.success && extractedUser?.id) {
                         dispatch(setAuthLoaded({
                             isAuthenticated: true,
-                            user: extractedUser
+                            user: extractedUser,
+                            accessToken: newAccessToken
                         }));
-                    } else {
-                        throw new Error("Invalid session");
+                        return;
                     }
-                } catch (error) {
-                    localStorage.removeItem('accessToken');
-                    dispatch(setAuthLoaded({ isAuthenticated: false }));
                 }
-            } else {
+                throw new Error("Session invalid");
+            } catch (error) {
+                setInMemoryToken(null);
                 dispatch(setAuthLoaded({ isAuthenticated: false }));
             }
         };
-
         bootstrapAuth();
-    }, [ dispatch ]);
+    }, [dispatch]);
 
     return (
         <BrowserRouter>

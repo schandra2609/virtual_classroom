@@ -2,6 +2,11 @@ import axios from 'axios';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://192.168.0.130:5000/api/v1';
 
+let inMemoryAccessToken: string | null = null;
+export const setInMemoryToken = (token: string | null) => {
+    inMemoryAccessToken = token;
+};
+
 export const API = axios.create({
     baseURL: BASE_URL,
     withCredentials: true,
@@ -13,9 +18,8 @@ export const API = axios.create({
 // REQUEST INTERCEPTOR: Attach the short-lived access token
 API.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('accessToken');
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
+        if (inMemoryAccessToken) {
+            config.headers.Authorization = `Bearer ${inMemoryAccessToken}`;
         }
         return config;
     },
@@ -41,22 +45,15 @@ API.interceptors.response.use(
                 );
 
                 const newAccessToken = refreshResponse.data.data.accessToken;
-                
-                // Save the new token and update the failed request's header
-                localStorage.setItem('accessToken', newAccessToken);
+                setInMemoryToken(newAccessToken);
                 originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
-
-                // Retry the original request seamlessly
                 return API(originalRequest);
-
             } catch (refreshError) {
-                // If refresh fails (e.g., refresh token expired/revoked), log them out
-                localStorage.removeItem('accessToken');
-                window.location.href = '/login'; // Force redirect to login
+                setInMemoryToken(null);
+                window.location.href = '/login';
                 return Promise.reject(refreshError);
             }
         }
-
         return Promise.reject(error);
     }
 );

@@ -31,6 +31,15 @@ export const authService = {
     },
 
     /**
+     * @route POST /api/v1/auth/refresh-token
+     * @description Silent token rotation via HttpOnly Cookie
+     */
+    refreshTokens: async (): Promise<ApiResponse<{ accessToken: string }>> => {
+        const response = await API.post('/auth/refresh-token');
+        return response.data;
+    },
+
+    /**
      * @route POST /api/v1/auth/complete-profile
      * @description Completes the profile setup for a newly registered user.
      */

@@ -180,14 +180,6 @@ const ClassroomsDashboard = () => {
                         </>
                     ) : (
                         <>
-                            {(
-                                <Button variant="outline" className="gap-2" asChild>
-                                    <Link to="/dashboard/invitations">
-                                        <FiInbox className="h-4 w-4" /> Invitations
-                                    </Link>
-                                </Button>
-                            )}
-
                             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                                 <DialogTrigger asChild>
                                     <Button className="gap-2">

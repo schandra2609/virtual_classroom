@@ -231,9 +231,8 @@ export const submitTestAttempt = async (
     try {
         const { attemptId } = req.params as { attemptId: string };
         const studentId = req.user?.id as string;
-        if (!attemptId.trim()) {
+        if (!attemptId.trim())
             throw new BadRequestError("Attempt ID is required.");
-        }
 
         const attempt = await prisma.testAttempt.findFirst({
             where: {
@@ -252,8 +251,33 @@ export const submitTestAttempt = async (
                 },
             },
         });
-        if (!attempt) {
+        if (!attempt)
             throw new NotFoundError("Active test attempt not found.");
+
+        /** @section SERVER-SIDE TIMER & STATUS GUARD */
+        if (attempt.type === "OFFICIAL") {
+            const { status, liveAt, duration, pauseTime } = attempt.questionPaper;
+
+            // 1. Check Manual Status
+            if (status.toUpperCase() === "PAUSED")
+                throw new ForbiddenError("Submission blocked: Test is paused.");
+            if (status.toUpperCase() === "CANCELLED")
+                throw new ForbiddenError("Submission blocked: Test cancelled.");
+            if (status.toUpperCase() === "COMPLETED")
+                throw new ForbiddenError("Submission blocked: Test ended.");
+
+            // 2. Check Server Clock (Hard Deadline)
+            const now = new Date().getTime();
+            const start = new Date(liveAt).getTime();
+            const durationMillis = duration * 60 * 1000;
+            const adjustedDeadline = start + durationMillis + pauseTime;
+
+            // Includes the 15-second grace period for network latency
+            if (now > adjustedDeadline + 15000) {
+                throw new ForbiddenError(
+                    "Submission blocked: Time limit exceeded.",
+                );
+            }
         }
 
         let totalScore = 0;

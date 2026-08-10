@@ -50,11 +50,10 @@ export const getClassroomMembers = async (
             whereClause.membershipStatus = normalizedStatus;
         }
 
-        // RBAC Enforcement: Students are absolutely prohibited from fetching the student list
-        // if (req.user?.accountType === "STUDENT") {
-        //     whereClause.role = { in: ["CREATOR", "CO_TUTOR"] };
-        //     whereClause.membershipStatus = "APPROVED"; // Students can only ever see active/approved tutors
-        // }
+        if (req.user?.accountType === "STUDENT") {
+            whereClause.role = { in: ["CREATOR", "CO_TUTOR"] };
+            whereClause.membershipStatus = "APPROVED";
+        }
 
         const members = await prisma.classroomMember.findMany({
             where: whereClause,
@@ -309,6 +308,11 @@ export const getStudentPerformance = async (
 ): Promise<void> => {
     try {
         const { classroomId, studentId } = req.params as { classroomId: string, studentId: string };
+        const requesterId = req.user?.id;
+        const requesterRole = req.membership?.role;
+
+        if (requesterRole === "STUDENT" && requesterId !== studentId)
+            throw new ForbiddenError("You are not authorized to view another student's analytics.");
 
         // 1. Fetch ALL valid exams to build the complete X-axis baseline
         const validPapers = await prisma.questionPaper.findMany({

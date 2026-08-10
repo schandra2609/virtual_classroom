@@ -111,7 +111,7 @@ const CBTPlayer = () => {
     // ==========================================
     // PENALTY & WARNING ALGORITHM
     // ==========================================
-    const applyPenalty = useCallback((_reasonLog: string) => {
+    const applyPenalty = useCallback(async (reasonLog: string) => {
         setRemainingSeconds(prev => {
             const newTime = prev - PENALTY_SEC;
             if (newTime <= 0) {
@@ -121,7 +121,16 @@ const CBTPlayer = () => {
             toast.error("PENALTY APPLIED: 10 minutes deducted from your timer.", { duration: 5000 });
             return newTime;
         });
-    }, [handleSubmitExam]);
+
+        // Sync security lock / infraction to backend if warnings are exhausted
+        if (activeAttemptId && classroomId && paperId) {
+            try {
+                await testattemptService.pauseAttempt(classroomId, paperId, activeAttemptId);
+            } catch (error) {
+                console.error("Failed to sync security violation to server:", error);
+            }
+        }
+    }, [activeAttemptId, classroomId, paperId, handleSubmitExam]);
 
     const resolveWarning = useCallback(() => {
         if (warningTimerRef.current) clearInterval(warningTimerRef.current);

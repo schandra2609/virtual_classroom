@@ -83,15 +83,14 @@ export const createClassroom = async (
 
         const creatorId = req.user?.id as string;
 
-        // 🚨 SECURITY CHECK: Disabled for demo purposes
-        // const latestApplication = await prisma.tutorApplication.findFirst({
-        //     where: { userId: creatorId },
-        //     orderBy: { createdAt: "desc" }
-        // });
-        //
-        // if (!latestApplication || latestApplication.status !== "VERIFIED") {
-        //     throw new ForbiddenError("This action is restricted to VERIFIED TUTORs only.");
-        // }
+        const latestApplication = await prisma.tutorApplication.findFirst({
+            where: { userId: creatorId },
+            orderBy: { createdAt: "desc" }
+        });
+        
+        if (!latestApplication || latestApplication.status !== "VERIFIED") {
+            throw new ForbiddenError("This action is restricted to VERIFIED TUTORs only.");
+        }
 
         let joiningCode: string;
         let isUnique = false;

@@ -4,6 +4,7 @@ import type { UserProfile } from '@/api/types';
 interface AuthState {
     isAuthenticated: boolean;
     user?: UserProfile;
+    accessToken?: string;
     isLoading: boolean;
 }
 
@@ -21,28 +22,29 @@ const authSlice = createSlice({
             action: PayloadAction<{ user: UserProfile; accessToken: string }>
         ) => {
             state.user = action.payload.user;
+            state.accessToken = action.payload.accessToken;
             state.isAuthenticated = true;
-            if (action.payload.accessToken && action.payload.accessToken !== "undefined") {
-                localStorage.setItem('accessToken', action.payload.accessToken);
-            }
         },
         setLoading: (state, action: PayloadAction<boolean>) => {
             state.isLoading = action.payload;
         },
         setAuthLoaded: (
             state,
-            action: PayloadAction<{ isAuthenticated: boolean; user?: UserProfile }>
+            action: PayloadAction<{ isAuthenticated: boolean; user?: UserProfile; accessToken?: string }>
         ) => {
             state.isLoading = false;
             state.isAuthenticated = action.payload.isAuthenticated;
             if (action.payload.user) {
                 state.user = action.payload.user;
             }
+            if (action.payload.accessToken) {
+                state.accessToken = action.payload.accessToken;
+            }
         },
         logout: (state) => {
             state.user = undefined;
             state.isAuthenticated = false;
-            localStorage.removeItem('accessToken');
+            state.accessToken = undefined;
         },
     },
 });
